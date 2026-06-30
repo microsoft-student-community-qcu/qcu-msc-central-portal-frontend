@@ -2,7 +2,7 @@ name: Build and Deploy to Azure
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
   workflow_dispatch:
 
 permissions:
@@ -45,5 +45,5 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-          app-name: msc-qcu
+          app-name: msc-qcu-develop
           package: dist
