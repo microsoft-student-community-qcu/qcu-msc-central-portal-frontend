@@ -23,10 +23,18 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Build
         run: npm run build
+
+      # Copy package files into the dist folder so Azure knows how to run it
+      - name: Prepare deployment package
+        run: |
+          cp package.json dist/
+          cp package-lock.json dist/
+          cd dist
+          npm install --omit=dev
 
       - name: Azure Login
         uses: azure/login@v2
