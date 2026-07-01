@@ -28,13 +28,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Copy package files into the dist folder so Azure knows how to run it
-      - name: Prepare deployment package
-        run: |
-          cp package.json dist/
-          cd dist
-          npm install --omit=dev
-
       - name: Azure Login
         uses: azure/login@v2
         with:
@@ -46,4 +39,5 @@ jobs:
         uses: azure/webapps-deploy@v3
         with:
           app-name: msc-qcu
-          package: dist
+          package: .output
+          startup-command: 'node server/index.mjs'
