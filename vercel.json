@@ -1,0 +1,5 @@
+{
+  "buildCommand": "unset LOVABLE_SANDBOX DEV_SERVER__PROJECT_PATH && bun run build",
+  "installCommand": "bun install",
+  "framework": null
+}
