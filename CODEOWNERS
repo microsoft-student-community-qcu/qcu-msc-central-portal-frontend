@@ -1,4 +1,3 @@
-# Code Owners for qcu-msc-central-portal-frontend
-# These owners are required reviewers for all PRs targeting main.
-
-* @microsoft-student-community-qcu/cloud-team @datadonotlieee
+# Branching Conventions & Approval Requirements
+# Target: main
+* @microsoft-student-community-qcu/cloud-team @microsoft-student-community-qcu/qa-team
