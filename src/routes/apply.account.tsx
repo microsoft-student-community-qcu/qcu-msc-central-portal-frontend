@@ -11,7 +11,7 @@ import {
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
 import { clearAccountRedirect } from "@/lib/application-flow";

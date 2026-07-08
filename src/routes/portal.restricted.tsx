@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { ArrowLeft, LogOut, ShieldAlert } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import {
   routeForRole,
@@ -66,7 +66,7 @@ function RestrictedPage() {
         <div className="mt-8 rounded-3xl border border-brand-blue-light bg-white shadow-md p-8 text-center sm:p-10">
           <div
             className="mx-auto grid size-16 place-items-center rounded-full"
-            style={{ background: "linear-gradient(135deg, #c2410c, #f97316)" }}
+            style={{ background: "var(--brand-orange)" }}
           >
             <ShieldAlert className="size-8 text-white" />
           </div>

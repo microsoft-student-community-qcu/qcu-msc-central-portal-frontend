@@ -10,7 +10,7 @@ import {
   Orbit,
   Sparkles,
 } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";

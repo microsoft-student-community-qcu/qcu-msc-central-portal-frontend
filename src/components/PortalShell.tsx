@@ -10,7 +10,7 @@ import {
   User as UserIcon,
   X,
 } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 
 import {

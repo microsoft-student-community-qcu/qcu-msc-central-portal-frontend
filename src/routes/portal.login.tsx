@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, LogIn, ShieldCheck } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
 import {
@@ -144,10 +144,7 @@ function PortalLoginPage() {
             <h1 className="mt-5 font-display text-4xl font-extrabold leading-[1.0] tracking-tight text-white drop-shadow sm:text-6xl lg:text-7xl">
               Re-dock<br />
               <span className="italic font-light">at</span>{" "}
-              <span
-                className="bg-clip-text text-transparent"
-                style={{ backgroundImage: "var(--gradient-cta)" }}
-              >
+              <span className="text-brand-orange">
                 Moon HQ.
               </span>
             </h1>

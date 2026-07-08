@@ -9,7 +9,7 @@ import {
   Clock,
   Rocket,
 } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { EVENTS, type FullEvent, type EventStatus } from "@/lib/events-data";
 
@@ -150,11 +150,11 @@ function EventsPage() {
             <span className="relative inline-block">
               <span
                 className="bg-clip-text text-transparent"
-                style={{ backgroundImage: "linear-gradient(120deg, var(--brand-orange), var(--brand-yellow), var(--brand-green), var(--brand-blue))" }}
+                style={{ backgroundImage: "linear-gradient(120deg, var(--brand-yellow), var(--brand-orange), var(--brand-green), var(--brand-blue))" }}
               >
                 Events
               </span>
-              <svg className="absolute -bottom-3 left-0 w-full text-brand-orange" viewBox="0 0 200 20" fill="none" aria-hidden>
+              <svg className="absolute -bottom-3 left-0 w-full text-brand-yellow" viewBox="0 0 200 20" fill="none" aria-hidden>
                 <path d="M5 15 Q 100 0 195 15" stroke="currentColor" strokeWidth="8" strokeLinecap="round" />
               </svg>
             </span>

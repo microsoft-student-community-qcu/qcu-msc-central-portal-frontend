@@ -10,7 +10,7 @@ import {
   Sparkles,
   User,
 } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 
 export const Route = createFileRoute("/apply/dashboard")({

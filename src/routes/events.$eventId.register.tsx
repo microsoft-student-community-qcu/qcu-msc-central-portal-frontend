@@ -19,7 +19,7 @@ import {
   User,
   AlertCircle,
 } from "lucide-react";
-import logoUrl from "@/assets/qcu-msc-logo.png";
+import logoUrl from "@/assets/qcu-msc-logo.webp";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { findEvent, type FullEvent } from "@/lib/events-data";
 import { getPortalUser } from "@/lib/portal-auth";
@@ -350,7 +350,7 @@ function BriefStep({ event, onMember, onGeneral }: { event: FullEvent; onMember:
           onClick={onMember}
           className="group relative overflow-hidden rounded-3xl p-6 text-left transition hover:-translate-y-1"
           style={{
-            background: "linear-gradient(135deg, var(--brand-blue-deep), var(--brand-blue))",
+            background: "var(--brand-blue-deep)",
             boxShadow: "0 20px 40px -20px color-mix(in oklab, var(--brand-blue-deep) 55%, transparent)",
           }}
         >

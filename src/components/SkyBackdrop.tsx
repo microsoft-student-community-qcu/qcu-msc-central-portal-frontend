@@ -1,4 +1,8 @@
 import { memo } from "react";
+import cloud1Url from "@/assets/cloud1_upscaled.webp";
+import cloud2Url from "@/assets/cloud2_upscaled.webp";
+import cloud3Url from "@/assets/cloud3_upscaled.webp";
+import cloud4Url from "@/assets/cloud4_upscaled.webp";
 
 // Deterministic pseudo-random so SSR + client agree. Round to avoid tiny
 // floating-point differences between server and browser JS engines.
@@ -36,6 +40,16 @@ const HERO_STARS = Array.from({ length: 4 }, (_, i) => ({
   delay: round(rand(i, 24) * 4, 2),
 }));
 
+const CLOUDS_CONFIG = [
+  { src: cloud1Url, className: "left-[-40px] bottom-[38%] w-[15rem] opacity-70", drift: "drift-slow" as const, delay: "0s" },
+  { src: cloud2Url, className: "right-[-30px] bottom-[32%] w-[18rem] opacity-75", drift: "drift-slower" as const, delay: "2s" },
+  { src: cloud3Url, className: "left-[6%] bottom-[24%] w-[14rem] opacity-80", drift: "drift-slow" as const, delay: "1.2s" },
+  { src: cloud4Url, className: "right-[10%] bottom-[19%] w-[19rem] opacity-85", drift: "drift-slower" as const, delay: "3s" },
+  { src: cloud1Url, className: "left-[28%] bottom-[10%] w-[18rem] opacity-90", drift: "drift-slow" as const, delay: "0.6s" },
+  { src: cloud2Url, className: "right-[-40px] bottom-[3%] w-[17rem] opacity-95", drift: "drift-slower" as const, delay: "2.4s" },
+  { src: cloud3Url, className: "left-[-30px] bottom-[-10px] w-[21rem] opacity-100", drift: "drift-slow" as const, delay: "1.5s" },
+];
+
 export const SkyBackdrop = memo(function SkyBackdrop({
   variant = "sky",
 }: {
@@ -49,9 +63,10 @@ export const SkyBackdrop = memo(function SkyBackdrop({
   return (
     <div aria-hidden className="sky-backdrop pointer-events-none absolute inset-0 z-0 overflow-hidden">
       <div
-        className="absolute inset-0"
+         className="absolute inset-0"
         style={{ background: isSpace ? "var(--gradient-space)" : "var(--gradient-hero)" }}
       />
+
 
       {/* Soft nebula glows */}
       <div
@@ -114,20 +129,30 @@ export const SkyBackdrop = memo(function SkyBackdrop({
         ))}
 
       {/* Shooting stars */}
-      <ShootingStar top={12} left={-10} delay={2} duration={9} />
-      <ShootingStar top={28} left={-10} delay={6.5} duration={11} />
-      {isSpace && <ShootingStar top={62} left={-10} delay={4} duration={10} />}
+      <ShootingStar top={10} left={-10} delay={1.5} duration={7} />
+      <ShootingStar top={22} left={-15} delay={4.5} duration={10} />
+      <ShootingStar top={5} left={15} delay={7} duration={8} />
+      <ShootingStar top={32} left={-20} delay={3} duration={9} />
+      <ShootingStar top={18} left={5} delay={5.5} duration={11} />
+      {isSpace && (
+        <>
+          <ShootingStar top={48} left={-10} delay={2} duration={6} />
+          <ShootingStar top={65} left={-15} delay={4} duration={8} />
+        </>
+      )}
 
       {/* Cloud layers — only in atmospheric sky */}
       {!isSpace && (
         <>
-          <Cloud className="left-[-80px] bottom-[38%] w-[26rem] opacity-70" drift="drift-slow" />
-          <Cloud className="right-[-60px] bottom-[32%] w-[28rem] opacity-75" drift="drift-slower" delay="2s" />
-          <Cloud className="left-[6%] bottom-[24%] w-[22rem] opacity-80" drift="drift-slow" delay="1.2s" />
-          <Cloud className="right-[10%] bottom-[19%] w-[24rem] opacity-85" drift="drift-slower" delay="3s" />
-          <Cloud className="left-[28%] bottom-[10%] w-[30rem] opacity-90" drift="drift-slow" delay="0.6s" />
-          <Cloud className="right-[-70px] bottom-[3%] w-[32rem] opacity-95" drift="drift-slower" delay="2.4s" />
-          <Cloud className="left-[-60px] bottom-[-30px] w-[30rem] opacity-100" drift="drift-slow" delay="1.5s" />
+          {CLOUDS_CONFIG.map(({ src, className, drift, delay }, idx) => (
+            <img
+              key={idx}
+              src={src}
+              alt=""
+              className={`absolute ${className} ${drift === "drift-slow" ? "animate-drift-slow" : "animate-drift-slower"}`}
+              style={{ animationDelay: delay }}
+            />
+          ))}
         </>
       )}
     </div>
@@ -160,56 +185,20 @@ function SparkleStar({ top, left, size, delay }: { top: number; left: number; si
 function ShootingStar({ top, left, delay, duration }: { top: number; left: number; delay: number; duration: number }) {
   return (
     <span
-      className="absolute h-px w-40"
+      className="absolute h-[2px] w-32"
       style={{
         top: `${top}%`,
         left: `${left}%`,
-        background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.95), transparent)",
-        filter: "drop-shadow(0 0 6px rgba(255,255,255,0.8))",
-        transform: "rotate(18deg)",
-        animation: `shoot ${duration}s linear ${delay}s infinite`,
+        background: "linear-gradient(to right, transparent 0%, rgba(132, 214, 247, 0.6) 75%, #ffffff 100%)",
+        filter: "drop-shadow(0 0 8px rgba(132, 214, 247, 0.95))",
+        transform: "rotate(45deg)",
+        transformOrigin: "left center",
+        animation: `meteor-shoot-lr ${duration}s linear ${delay}s infinite`,
         opacity: 0,
+        pointerEvents: "none",
+        willChange: "transform, opacity",
       }}
     />
   );
 }
 
-function Cloud({
-  className = "",
-  drift = "drift-slow",
-  delay,
-}: {
-  className?: string;
-  drift?: "drift-slow" | "drift-slower";
-  delay?: string;
-}) {
-  return (
-    <svg
-      viewBox="0 0 240 110"
-      className={`absolute ${className} ${drift === "drift-slow" ? "animate-drift-slow" : "animate-drift-slower"}`}
-      style={delay ? { animationDelay: delay } : undefined}
-      aria-hidden
-    >
-      <defs>
-        <radialGradient id="cg-top" cx="50%" cy="30%" r="70%">
-          <stop offset="0%" stopColor="white" stopOpacity="1" />
-          <stop offset="70%" stopColor="white" stopOpacity="0.85" />
-          <stop offset="100%" stopColor="white" stopOpacity="0.45" />
-        </radialGradient>
-        <radialGradient id="cg-shadow" cx="50%" cy="80%" r="70%">
-          <stop offset="0%" stopColor="oklch(0.78 0.06 250)" stopOpacity="0.45" />
-          <stop offset="100%" stopColor="oklch(0.78 0.06 250)" stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      {/* Soft underside shadow */}
-      <ellipse cx="120" cy="85" rx="105" ry="20" fill="url(#cg-shadow)" />
-      {/* Fluffy body — multiple overlapping ellipses */}
-      <ellipse cx="55" cy="68" rx="42" ry="26" fill="url(#cg-top)" />
-      <ellipse cx="95" cy="50" rx="48" ry="34" fill="url(#cg-top)" />
-      <ellipse cx="140" cy="44" rx="44" ry="36" fill="url(#cg-top)" />
-      <ellipse cx="180" cy="58" rx="40" ry="28" fill="url(#cg-top)" />
-      <ellipse cx="205" cy="72" rx="30" ry="20" fill="url(#cg-top)" />
-      <ellipse cx="115" cy="72" rx="70" ry="22" fill="url(#cg-top)" opacity="0.9" />
-    </svg>
-  );
-}
