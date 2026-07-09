@@ -57,7 +57,7 @@ function ApplyAccountPage() {
     }
   }, []);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password.length < 8) {
       setError("Password must be at least 8 characters.");
@@ -67,25 +67,62 @@ function ApplyAccountPage() {
       setError("Passwords don't match.");
       return;
     }
+    if (!applicant) {
+      setError("No applicant data found. Please start over.");
+      return;
+    }
+
     setError(null);
     setSubmitting(true);
+
     try {
-      sessionStorage.setItem(
-        "qcumsc.account",
-        JSON.stringify({ createdAt: new Date().toISOString() }),
-      );
-    } catch {
-      /* ignore */
-    }
-    if (applicant) {
+      const nameParts = applicant.fullName.trim().split(" ");
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+
+      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+      const AUTH_URL = API_URL.replace("/api/v1", "/api/auth/sign-up/email");
+      
+      const res = await fetch(AUTH_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: applicant.fullName,
+          studentId: applicant.studentId,
+          lastName,
+          firstName,
+          email: applicant.email,
+          password
+        })
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.message || "Failed to create account.");
+      }
+
+      try {
+        sessionStorage.setItem(
+          "qcumsc.account",
+          JSON.stringify({ createdAt: new Date().toISOString() }),
+        );
+      } catch {
+        /* ignore */
+      }
+      
       setPortalUser({
         email: applicant.email,
         fullName: applicant.fullName,
         studentNumber: applicant.studentId,
         role: "applicant",
       });
+
+      void navigate({ to: "/portal/tracking" });
+    } catch (err: any) {
+      setError(err.message || "An error occurred during account creation.");
+    } finally {
+      setSubmitting(false);
     }
-    void navigate({ to: "/portal/tracking" });
   };
 
   const firstName = applicant?.fullName?.split(" ")[0] ?? "cadet";

@@ -111,6 +111,21 @@ const emailQcu = (v: string) => {
   if (!/^[^\s@]+@qcu\.edu\.ph$/i.test(v.trim())) return "Must be a valid @qcu.edu.ph email.";
   return null;
 };
+const validCellphone = (v: string) => {
+  if (!v.trim()) return "This one's required to continue.";
+  if (!/^09\d{9}$/.test(v.trim())) return "Must be 11 digits starting with 09 (e.g., 09123456789).";
+  return null;
+};
+const validUrl = (v: string) => {
+  if (!v.trim()) return null;
+  try {
+    new URL(v.trim());
+    return null;
+  } catch {
+    return "Must be a valid URL (e.g., https://...)";
+  }
+};
+const requiredUrl = (v: string) => required(v) || validUrl(v);
 
 const QUESTIONS: Question[] = [
   // Chapter 1 — Getting to know you
@@ -239,10 +254,11 @@ const QUESTIONS: Question[] = [
   {
     key: "cellphone",
     chapter: "Chapter 5 · How we'll reach you",
-    prompt: "And your cellphone number?",
-    placeholder: "09xx xxx xxxx",
+    prompt: "Your cellphone number?",
+    helper: "For faster updates.",
+    placeholder: "09123456789",
     kind: "tel",
-    validate: required,
+    validate: validCellphone,
   },
   {
     key: "houseAddress",
@@ -259,7 +275,7 @@ const QUESTIONS: Question[] = [
     prompt: "What's your Facebook profile link?",
     placeholder: "https://facebook.com/your.profile",
     kind: "text",
-    validate: required,
+    validate: requiredUrl,
   },
 
   // Chapter 6 — A little more about you
@@ -291,6 +307,7 @@ const QUESTIONS: Question[] = [
     placeholder: "https://your-portfolio.com",
     kind: "text",
     optional: true,
+    validate: validUrl,
   },
   {
     key: "githubOrProjects",
@@ -299,6 +316,7 @@ const QUESTIONS: Question[] = [
     placeholder: "https://github.com/yourhandle",
     kind: "text",
     optional: true,
+    validate: validUrl,
   },
   {
     key: "previousWorks",
@@ -319,6 +337,8 @@ function ApplyPage() {
   const [stage, setStage] = useState<"scan" | "confirm" | "form">("scan");
   const [provisionalIdFile, setProvisionalIdFile] = useState<File | null>(null);
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
+  const [ocrSessionId, setOcrSessionId] = useState<string | null>(null);
+  const [manualRequired, setManualRequired] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
@@ -326,6 +346,7 @@ function ApplyPage() {
   const [confirmEmail, setConfirmEmail] = useState("");
   const [idx, setIdx] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
+  const [files, setFiles] = useState<Record<string, File>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -353,23 +374,42 @@ function ApplyPage() {
     setStage("confirm");
     setOcrError(null);
     setOcrLoading(true);
-    // TODO: Replace with the real backend OCR endpoint.
-    // Example:
-    //   const fd = new FormData();
-    //   fd.append("id", payload.fullIdImageFile);
-    //   const res = await fetch("/api/ocr/qcu-id", { method: "POST", body: fd });
-    //   const { studentNumber, fullName } = await res.json();
+
     try {
-      // Stub: leave fields blank so the applicant can fill them in.
-      await new Promise((r) => setTimeout(r, 600));
-      setConfirmStudentId("");
-      setConfirmFullName("");
+      const fd = new FormData();
+      fd.append("image", payload.fullIdImageFile);
+      
+      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+      const res = await fetch(`${API_URL}/ocr/verify`, { method: "POST", body: fd });
+      const json = await res.json();
+
+      if (res.ok && json.success) {
+        setOcrSessionId(json.data.ocrSessionId);
+        setManualRequired(json.data.manualRequired);
+        
+        // Pre-fill
+        setConfirmStudentId(json.data.studentId || "");
+        setConfirmFullName(json.data.fullName || "");
+        
+        setForm(f => ({ ...f, fullName: json.data.fullName || "" }));
+      } else {
+        if (json.data && json.data.manualRequired) {
+          setOcrSessionId(json.data.ocrSessionId);
+          setManualRequired(true);
+          setConfirmStudentId("");
+          setConfirmFullName("");
+          setOcrError(json.message || "Unable to read Student ID. Manual entry required.");
+        } else {
+          throw new Error(json.message || "Could not read ID.");
+        }
+      }
     } catch (err) {
       setOcrError(
         err instanceof Error
           ? err.message
-          : "We couldn't read your ID automatically. You can type the details in.",
+          : "We couldn't read your ID automatically. You can type the details in."
       );
+      setManualRequired(true); // Fallback to manual if API is down
     } finally {
       setOcrLoading(false);
     }
@@ -414,15 +454,19 @@ function ApplyPage() {
     }
   }, [idx, q]);
 
-  const update = (key: keyof FormState, value: string) => {
+  const update = (key: keyof FormState, value: string, file?: File) => {
     setForm((f) => ({ ...f, [key]: value }));
+    if (file) setFiles(prev => ({ ...prev, [key]: file }));
     setError(null);
   };
 
   const goNext = () => {
     if (!q) return;
     const v = String(form[q.key] ?? "");
-    if (!q.optional && q.validate) {
+    
+    if (q.optional && !v.trim()) {
+      // Optional and empty is fine
+    } else if (q.validate) {
       const msg = q.validate(v);
       if (msg) {
         setError(msg);
@@ -451,26 +495,97 @@ function ApplyPage() {
     }
   };
 
-  const submit = () => {
-    startAccountRedirect();
-    setRedirectingToAccount(true);
+  const submit = async () => {
+    setError(null);
     try {
-      sessionStorage.setItem(
-        "qcumsc.applicant",
-        JSON.stringify({
-          studentId: form.studentId,
-          fullName: form.fullName,
-          email: form.email,
-          role: form.role,
-          provisional: !!provisionalIdFile,
-        }),
-      );
-    } catch {
-      /* ignore */
+      const fd = new FormData();
+      
+      const nameParts = form.fullName.trim().split(" ");
+      const firstName = nameParts[0] || "";
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      
+      fd.append("firstName", firstName);
+      fd.append("lastName", lastName);
+      fd.append("email", form.email);
+      fd.append("college", form.college);
+      fd.append("program", form.program);
+      fd.append("section", form.section);
+      
+      let backendCampus = "SAN_BARTOLOME_MAIN";
+      if (form.campus.toUpperCase().includes("SAN FRANCISCO")) backendCampus = "SAN_FRANCISCO";
+      if (form.campus.toUpperCase().includes("BATASAN")) backendCampus = "BATASAN";
+      fd.append("campus", backendCampus);
+      
+      if (form.dateOfBirth) fd.append("dateOfBirth", form.dateOfBirth);
+      fd.append("placeOfBirth", form.placeOfBirth);
+      
+      let backendGender = "PREFER_NOT_TO_SAY";
+      const g = form.gender.toUpperCase();
+      if (g.includes("MALE") && !g.includes("FEMALE")) backendGender = "MALE";
+      else if (g.includes("FEMALE")) backendGender = "FEMALE";
+      else if (g.includes("LGBTQ")) backendGender = "LGBTQIA";
+      fd.append("gender", backendGender);
+      
+      fd.append("membershipRole", form.role);
+      fd.append("houseAddress", form.houseAddress);
+      fd.append("cellphoneNumber", form.cellphone);
+      fd.append("qcuMscEmail", form.email);
+      fd.append("facebookLink", form.facebookLink);
+      fd.append("interestsSkillsHobbies", form.interests);
+      fd.append("organizationHistory", form.pastOrganizations || "N/A");
+      
+      if (form.portfolio) fd.append("portfolio", form.portfolio);
+      if (form.githubOrProjects) fd.append("githubOrProjectLinks", form.githubOrProjects);
+      if (form.previousWorks) fd.append("previousWorksAchievements", form.previousWorks);
+      
+      if (ocrSessionId) fd.append("ocrSessionId", ocrSessionId);
+      if (manualRequired) fd.append("studentId", form.studentId);
+      
+      if (!files.certificateOfRegistration) throw new Error(`Please re-select your Certificate of Registration file. Debug memory: ${Object.keys(files).join(", ") || "none"}`);
+      if (!files.curriculumVitae) throw new Error(`Please re-select your Curriculum Vitae file. Debug memory: ${Object.keys(files).join(", ") || "none"}`);
+      fd.append("certificateOfRegistration", files.certificateOfRegistration);
+      fd.append("curriculumVitae", files.curriculumVitae);
+
+      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+      const res = await fetch(`${API_URL}/applicants`, {
+        method: "POST",
+        body: fd
+      });
+      const json = await res.json();
+      
+      if (!res.ok || !json.success) {
+        let errorMsg = json.message || "Submission failed.";
+        if (json.errors) {
+          const detailErrs = Object.values(json.errors).flat().join(" | ");
+          errorMsg = `${errorMsg}: ${detailErrs}`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      startAccountRedirect();
+      setRedirectingToAccount(true);
+      try {
+        sessionStorage.setItem(
+          "qcumsc.applicant",
+          JSON.stringify({
+            studentId: manualRequired ? form.studentId : json.data.studentId,
+            fullName: form.fullName,
+            email: form.email,
+            role: form.role,
+            provisional: manualRequired,
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+      void navigate({ to: "/apply/account", replace: true }).catch(() => {
+        setRedirectingToAccount(false);
+      });
+    } catch (err: any) {
+      setError(err.message || "An error occurred during submission.");
+      setIdx(total - 1);
+      setSubmitted(false);
     }
-    void navigate({ to: "/apply/account", replace: true }).catch(() => {
-      setRedirectingToAccount(false);
-    });
   };
 
 
@@ -581,6 +696,7 @@ function ApplyPage() {
                   onStudentId={setConfirmStudentId}
                   onFullName={setConfirmFullName}
                   onEmail={setConfirmEmail}
+                  isManual={manualRequired}
                   onBack={() => {
                     setStage("scan");
                   }}
@@ -644,7 +760,7 @@ function ApplyPage() {
                   <QuestionInput
                     q={q!}
                     value={String(form[q!.key] ?? "")}
-                    onChange={(v) => update(q!.key, v)}
+                    onChange={(v, f) => update(q!.key, v, f)}
                     inputRef={inputRef}
                   />
 
@@ -774,7 +890,7 @@ function QuestionInput({
 }: {
   q: Question;
   value: string;
-  onChange: (v: string) => void;
+  onChange: (v: string, file?: File) => void;
   inputRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>;
 }) {
   const base = "bg-white/85 text-base";
@@ -822,7 +938,7 @@ function QuestionInput({
           className="hidden"
           onChange={(e) => {
             const f = e.target.files?.[0];
-            if (f) onChange(f.name);
+            if (f) onChange(f.name, f);
           }}
         />
       </label>
@@ -853,6 +969,7 @@ function ConfirmIdStep({
   onStudentId,
   onFullName,
   onEmail,
+  isManual,
   onBack,
   onContinue,
 }: {
@@ -865,6 +982,7 @@ function ConfirmIdStep({
   onStudentId: (v: string) => void;
   onFullName: (v: string) => void;
   onEmail: (v: string) => void;
+  isManual?: boolean;
   onBack: () => void;
   onContinue: () => void;
 }) {
@@ -899,8 +1017,8 @@ function ConfirmIdStep({
             value={studentId}
             onChange={(e) => onStudentId(e.target.value)}
             placeholder={loading ? "Auto-filling…" : "e.g. 21-1234-567"}
-            disabled={loading}
-            className="h-12 bg-white/85 text-base"
+            disabled={loading || !isManual}
+            className="h-12 bg-white/85 text-base disabled:opacity-80"
           />
         </label>
 
