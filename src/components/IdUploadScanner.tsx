@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactCrop, { type Crop, centerCrop, makeAspectCrop } from "react-image-crop";
+import "react-image-crop/dist/ReactCrop.css";
 import {
   Loader2,
   VideoOff,
@@ -32,6 +34,7 @@ type Status =
   | { kind: "starting" }
   | { kind: "live" }
   | { kind: "capturing" }
+  | { kind: "cropping" }
   | { kind: "captured" }
   | { kind: "upload" }
   | { kind: "camera-error"; message: string };
@@ -58,6 +61,44 @@ async function canvasToFile(
       quality,
     );
   });
+}
+
+async function getCroppedImg(
+  imageSrc: string,
+  percentCrop: { x: number; y: number; width: number; height: number },
+  fileName: string
+): Promise<File> {
+  const image = new Image();
+  image.src = imageSrc;
+  await new Promise((resolve) => (image.onload = resolve));
+
+  const cropX = (percentCrop.x / 100) * image.naturalWidth;
+  const cropY = (percentCrop.y / 100) * image.naturalHeight;
+  const cropWidth = (percentCrop.width / 100) * image.naturalWidth;
+  const cropHeight = (percentCrop.height / 100) * image.naturalHeight;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = cropWidth;
+  canvas.height = cropHeight;
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    throw new Error("No 2d context");
+  }
+
+  ctx.drawImage(
+    image,
+    cropX,
+    cropY,
+    cropWidth,
+    cropHeight,
+    0,
+    0,
+    cropWidth,
+    cropHeight
+  );
+
+  return canvasToFile(canvas, fileName);
 }
 
 export function IdUploadScanner({
@@ -103,6 +144,9 @@ export function IdUploadScanner({
 
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+
+  const [crop, setCrop] = useState<Crop>();
+  const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
 
   const [facingMode, setFacingMode] = useState<"environment" | "user">("environment");
   const facingModeRef = useRef<"environment" | "user">("environment");
@@ -442,7 +486,7 @@ export function IdUploadScanner({
       if (capturedPreview) URL.revokeObjectURL(capturedPreview);
       setCapturedFile(fullFile);
       setCapturedPreview(URL.createObjectURL(fullFile));
-      setStatus({ kind: "captured" });
+      setStatus({ kind: "cropping" });
       stopCamera();
     } catch (err) {
       setStatus({
@@ -476,23 +520,38 @@ export function IdUploadScanner({
     if (uploadPreview) URL.revokeObjectURL(uploadPreview);
     setUploadFile(file);
     setUploadPreview(URL.createObjectURL(file));
+    setStatus({ kind: "cropping" });
   };
 
-  const proceed = () => {
+  const proceed = async () => {
     const capturedAt = new Date().toISOString();
-    if (status.kind === "upload") {
-      if (!uploadFile) return;
-      onSubmit({
-        source: "upload",
-        fullIdImageFile: uploadFile,
-        meta: { capturedAt, canvasWidth: 0, canvasHeight: 0 },
-      });
-      return;
+    let finalFile: File | null = null;
+    let source: "camera" | "upload" = "camera";
+
+    if (status.kind === "cropping") {
+      const src = capturedPreview || uploadPreview;
+      if (src && completedCrop && completedCrop.width > 0 && completedCrop.height > 0) {
+        try {
+          finalFile = await getCroppedImg(src, completedCrop, "cropped-id.jpg");
+          source = capturedPreview ? "camera" : "upload";
+        } catch (err) {
+          console.error("Crop failed", err);
+          return;
+        }
+      } else {
+        finalFile = capturedFile || uploadFile;
+        source = capturedFile ? "camera" : "upload";
+      }
+    } else {
+      finalFile = capturedFile || uploadFile;
+      source = capturedFile ? "camera" : "upload";
     }
-    if (!capturedFile) return;
+
+    if (!finalFile) return;
+
     onSubmit({
-      source: "camera",
-      fullIdImageFile: capturedFile,
+      source,
+      fullIdImageFile: finalFile,
       meta: { capturedAt, canvasWidth: CANVAS_W, canvasHeight: CANVAS_H },
     });
   };
@@ -504,6 +563,7 @@ export function IdUploadScanner({
     status.kind === "camera-error";
   const showCaptured = status.kind === "captured" && capturedPreview;
   const showUpload = status.kind === "upload";
+  const showCropping = status.kind === "cropping" && (capturedPreview || uploadPreview);
 
   return (
     <div>
@@ -622,6 +682,53 @@ export function IdUploadScanner({
             </p>
           </div>
         </>
+      )}
+
+      {showCropping && (
+        <div className="mt-5 space-y-4">
+          <div className="overflow-hidden rounded-3xl border-2 border-brand-blue-light bg-black">
+            <ReactCrop
+              crop={crop}
+              onChange={(_, percentCrop) => setCrop(percentCrop)}
+              onComplete={(_, percentCrop) => setCompletedCrop(percentCrop)}
+              className="mx-auto"
+            >
+              <img
+                src={capturedPreview || uploadPreview || ""}
+                alt="Crop preview"
+                className="max-h-[60vh] w-auto object-contain"
+                onLoad={() => {
+                  const initialCrop: Crop = {
+                    unit: "%",
+                    x: 5,
+                    y: 5,
+                    width: 90,
+                    height: 90,
+                  };
+                  setCrop(initialCrop);
+                  setCompletedCrop(initialCrop);
+                }}
+              />
+            </ReactCrop>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => void retake()}
+              className="inline-flex items-center gap-2 rounded-full border-2 border-brand-blue-light bg-white px-5 py-2.5 font-heading text-xs font-bold uppercase tracking-[0.15em] text-brand-blue-deep"
+            >
+              <RotateCcw className="size-4" /> Retake
+            </button>
+            <button
+              type="button"
+              onClick={() => void proceed()}
+              className="inline-flex items-center gap-2 rounded-full px-7 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+              style={{ background: "var(--brand-blue-deep)" }}
+            >
+              Confirm Crop <ArrowRight className="size-4" />
+            </button>
+          </div>
+        </div>
       )}
 
       {showCaptured && capturedPreview && (

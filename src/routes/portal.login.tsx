@@ -9,7 +9,9 @@ import {
   routeForRole,
   setPortalUser,
   type PortalUser,
+  type PortalRole,
 } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/portal/login")({
   head: () => ({
@@ -27,21 +29,54 @@ function PortalLoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const onSubmit = (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !password) {
       setError("Enter your email and password.");
       return;
     }
-    const account = DEMO_ACCOUNTS.find(
+    const demoAccount = DEMO_ACCOUNTS.find(
       (a) => a.email.toLowerCase() === email.trim().toLowerCase(),
     );
-    if (!account) {
-      setError("No account matches that email.");
+    if (demoAccount) {
+      setPortalUser(demoAccount);
+      void navigate({ to: routeForRole(demoAccount.role) });
       return;
     }
-    setPortalUser(account);
-    void navigate({ to: routeForRole(account.role) });
+
+    try {
+      const { data, error: authError } = await authClient.signIn.email({
+        email: email.trim(),
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message || "Failed to sign in. Please check your credentials.");
+        return;
+      }
+
+      if (data?.user) {
+        let portalRole: PortalRole = "restricted";
+        if (data.user.role === "APPLICANT") {
+          portalRole = "applicant";
+        } else if (data.user.role === "MEMBER") {
+          portalRole = "member";
+        }
+
+        const backendUser: PortalUser = {
+          email: data.user.email,
+          fullName: data.user.name || `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || "User",
+          studentNumber: data.user.studentId || "",
+          role: portalRole,
+        };
+
+        setPortalUser(backendUser);
+        void navigate({ to: routeForRole(portalRole) });
+      }
+    } catch (err) {
+      console.error(err);
+      setError("An unexpected error occurred. Please try again.");
+    }
   };
 
   const quickLogin = (account: PortalUser) => {

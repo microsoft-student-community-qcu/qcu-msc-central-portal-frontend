@@ -125,6 +125,18 @@ const validUrl = (v: string) => {
     return "Must be a valid URL (e.g., https://...)";
   }
 };
+const validGitHubOrDriveUrl = (v: string) => {
+  if (!v.trim()) return null;
+  try {
+    const url = new URL(v.trim());
+    if (!url.hostname.includes("github.com") && !url.hostname.includes("drive.google.com")) {
+      return "Must be a valid GitHub or Google Drive link.";
+    }
+    return null;
+  } catch {
+    return "Must be a valid URL (e.g., https://...)";
+  }
+};
 const requiredUrl = (v: string) => required(v) || validUrl(v);
 
 const QUESTIONS: Question[] = [
@@ -316,7 +328,7 @@ const QUESTIONS: Question[] = [
     placeholder: "https://github.com/yourhandle",
     kind: "text",
     optional: true,
-    validate: validUrl,
+    validate: validGitHubOrDriveUrl,
   },
   {
     key: "previousWorks",
@@ -421,6 +433,10 @@ function ApplyPage() {
       setOcrError("Please complete your student number and full name.");
       return;
     }
+    if (!/^\d{2}-\d{4}$/.test(confirmStudentId.trim())) {
+      setOcrError("Student number must be in YY-NNNN format (e.g., 23-1234).");
+      return;
+    }
     const emailMsg = emailQcu(confirmEmail);
     if (emailMsg) {
       setOcrError(emailMsg);
@@ -491,7 +507,12 @@ function ApplyPage() {
   const skip = () => {
     if (q?.optional) {
       update(q.key, "");
-      setIdx((i) => Math.min(total, i + 1));
+      if (idx === total - 1) {
+        submit();
+      } else {
+        setIdx((i) => Math.min(total - 1, i + 1));
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
     }
   };
 
@@ -950,9 +971,13 @@ function QuestionInput({
       ref={(el) => { inputRef.current = el; }}
       type={q.kind}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={(e) => {
+        const val = q.kind === "tel" ? e.target.value.replace(/\D/g, "") : e.target.value;
+        onChange(val);
+      }}
       placeholder={q.placeholder}
       className={`h-12 ${base}`}
+      maxLength={q.kind === "tel" ? 11 : undefined}
     />
   );
 }
@@ -1016,7 +1041,7 @@ function ConfirmIdStep({
           <Input
             value={studentId}
             onChange={(e) => onStudentId(e.target.value)}
-            placeholder={loading ? "Auto-filling…" : "e.g. 21-1234-567"}
+            placeholder={loading ? "Auto-filling…" : "e.g. 23-1234"}
             disabled={loading || !isManual}
             className="h-12 bg-white/85 text-base disabled:opacity-80"
           />
