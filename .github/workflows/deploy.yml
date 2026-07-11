@@ -2,7 +2,7 @@ name: Deploy Frontend
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, release]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  # SSR build (nitro node-server) served by Azure App Service (Prod only).
+  deploy-app-service:
+    if: github.ref_name == 'main'
     uses: microsoft-student-community-qcu/qcu-msc-cicd/.github/workflows/deploy-azure-webapp-node.yml@main
     with:
       node-version: '22'
@@ -22,3 +24,16 @@ jobs:
       azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
       azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
       azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+  deploy-static-blob:
+    uses: microsoft-student-community-qcu/qcu-msc-cicd/.github/workflows/deploy-azure-blob-static.yml@main
+    with:
+      node-version: '22'
+      build-command: 'npm run build:swa'
+      source-path: 'dist/client'
+      destination-container: '$web'
+    secrets:
+      azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
