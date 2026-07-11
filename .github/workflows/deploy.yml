@@ -24,39 +24,14 @@ jobs:
       azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
   deploy-static-blob:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build static SPA
-        run: npm run build:swa
-
-      - name: Copy _shell.html to index.html
-        run: cp dist/client/_shell.html dist/client/index.html
-
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Upload to Azure Blob Storage
-        uses: azure/cli@v2
-        with:
-          inlineScript: |
-            az storage blob upload-batch \
-              --account-name stsamscqcubackend \
-              --auth-mode login \
-              --source dist/client \
-              --destination '$web' \
-              --overwrite
+    uses: microsoft-student-community-qcu/qcu-msc-cicd/.github/workflows/deploy-azure-blob-static.yml@main
+    with:
+      node-version: '22'
+      build-command: 'npm run build:swa'
+      storage-account-name: 'stsamscqcubackend'
+      source-path: 'dist/client'
+      destination-container: '$web'
+    secrets:
+      azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+      azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+      azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
