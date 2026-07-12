@@ -354,7 +354,9 @@ function ApplyPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
-  const [confirmFullName, setConfirmFullName] = useState("");
+  const [confirmLastName, setConfirmLastName] = useState("");
+  const [confirmFirstName, setConfirmFirstName] = useState("");
+  const [confirmMiddleInitial, setConfirmMiddleInitial] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
   const [idx, setIdx] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
@@ -401,15 +403,25 @@ function ApplyPage() {
         
         // Pre-fill
         setConfirmStudentId(json.data.studentId || "");
-        setConfirmFullName(json.data.fullName || "");
         
-        setForm(f => ({ ...f, fullName: json.data.fullName || "" }));
+        const lastName = json.data.lastName || "";
+        const firstName = json.data.firstName || "";
+        const middleInitial = json.data.middleInitial || "";
+        
+        setConfirmLastName(lastName);
+        setConfirmFirstName(firstName);
+        setConfirmMiddleInitial(middleInitial);
+        
+        const formattedName = `${lastName} ${firstName} ${middleInitial ? middleInitial + '.' : ''}`.trim().replace(/\s+/g, ' ');
+        setForm(f => ({ ...f, fullName: formattedName }));
       } else {
         if (json.data && json.data.manualRequired) {
           setOcrSessionId(json.data.ocrSessionId);
           setManualRequired(true);
           setConfirmStudentId("");
-          setConfirmFullName("");
+          setConfirmLastName("");
+          setConfirmFirstName("");
+          setConfirmMiddleInitial("");
           setOcrError(json.message || "Unable to read Student ID. Manual entry required.");
         } else {
           throw new Error(json.message || "Could not read ID.");
@@ -429,8 +441,8 @@ function ApplyPage() {
   };
 
   const confirmAndStart = () => {
-    if (!confirmStudentId.trim() || !confirmFullName.trim()) {
-      setOcrError("Please complete your student number and full name.");
+    if (!confirmStudentId.trim() || !confirmLastName.trim() || !confirmFirstName.trim()) {
+      setOcrError("Please complete your student number, last name, and first name.");
       return;
     }
     if (!/^\d{2}-\d{4}$/.test(confirmStudentId.trim())) {
@@ -443,10 +455,11 @@ function ApplyPage() {
       return;
     }
     setOcrError(null);
+    const formattedName = `${confirmLastName.trim()} ${confirmFirstName.trim()} ${confirmMiddleInitial.trim() ? confirmMiddleInitial.trim() + '.' : ''}`.trim().replace(/\s+/g, ' ');
     setForm((f) => ({
       ...f,
       studentId: confirmStudentId.trim(),
-      fullName: confirmFullName.trim(),
+      fullName: formattedName,
       email: confirmEmail.trim(),
     }));
     setStage("form");
@@ -522,8 +535,8 @@ function ApplyPage() {
       const fd = new FormData();
       
       const nameParts = form.fullName.trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const lastName = nameParts[0] || "";
+      const firstName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
       
       fd.append("firstName", firstName);
       fd.append("lastName", lastName);
@@ -619,7 +632,9 @@ function ApplyPage() {
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(null);
     setConfirmStudentId("");
-    setConfirmFullName("");
+    setConfirmLastName("");
+    setConfirmFirstName("");
+    setConfirmMiddleInitial("");
     setConfirmEmail("");
     setStage("scan");
   };
@@ -712,10 +727,14 @@ function ApplyPage() {
                   loading={ocrLoading}
                   error={ocrError}
                   studentId={confirmStudentId}
-                  fullName={confirmFullName}
+                  lastName={confirmLastName}
+                  firstName={confirmFirstName}
+                  middleInitial={confirmMiddleInitial}
                   email={confirmEmail}
                   onStudentId={setConfirmStudentId}
-                  onFullName={setConfirmFullName}
+                  onLastName={setConfirmLastName}
+                  onFirstName={setConfirmFirstName}
+                  onMiddleInitial={setConfirmMiddleInitial}
                   onEmail={setConfirmEmail}
                   isManual={manualRequired}
                   onBack={() => {
@@ -989,10 +1008,14 @@ function ConfirmIdStep({
   loading,
   error,
   studentId,
-  fullName,
+  lastName,
+  firstName,
+  middleInitial,
   email,
   onStudentId,
-  onFullName,
+  onLastName,
+  onFirstName,
+  onMiddleInitial,
   onEmail,
   isManual,
   onBack,
@@ -1002,10 +1025,14 @@ function ConfirmIdStep({
   loading: boolean;
   error: string | null;
   studentId: string;
-  fullName: string;
+  lastName: string;
+  firstName: string;
+  middleInitial: string;
   email: string;
   onStudentId: (v: string) => void;
-  onFullName: (v: string) => void;
+  onLastName: (v: string) => void;
+  onFirstName: (v: string) => void;
+  onMiddleInitial: (v: string) => void;
   onEmail: (v: string) => void;
   isManual?: boolean;
   onBack: () => void;
@@ -1047,18 +1074,47 @@ function ConfirmIdStep({
           />
         </label>
 
-        <label className="block">
-          <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-            Full Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
-          </div>
-          <Input
-            value={fullName}
-            onChange={(e) => onFullName(e.target.value)}
-            placeholder={loading ? "Auto-filling…" : "Juan Dela Cruz"}
-            disabled={loading}
-            className="h-12 bg-white/85 text-base"
-          />
-        </label>
+        <div className="grid grid-cols-[1fr_1fr_0.4fr] gap-3">
+          <label className="block">
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              Last Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            </div>
+            <Input
+              value={lastName}
+              onChange={(e) => onLastName(e.target.value)}
+              placeholder={loading ? "Auto-filling…" : "Dela Cruz"}
+              disabled={loading}
+              className="h-12 bg-white/85 text-base"
+            />
+          </label>
+
+          <label className="block">
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              First Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            </div>
+            <Input
+              value={firstName}
+              onChange={(e) => onFirstName(e.target.value)}
+              placeholder={loading ? "Auto-filling…" : "Juan"}
+              disabled={loading}
+              className="h-12 bg-white/85 text-base"
+            />
+          </label>
+
+          <label className="block">
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              M.I. {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            </div>
+            <Input
+              value={middleInitial}
+              onChange={(e) => onMiddleInitial(e.target.value)}
+              placeholder={loading ? "…" : "S"}
+              disabled={loading}
+              maxLength={2}
+              className="h-12 bg-white/85 text-base text-center"
+            />
+          </label>
+        </div>
 
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">

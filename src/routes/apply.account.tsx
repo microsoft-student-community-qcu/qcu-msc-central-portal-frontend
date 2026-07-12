@@ -77,8 +77,8 @@ function ApplyAccountPage() {
 
     try {
       const nameParts = applicant.fullName.trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const lastName = nameParts[0] || "";
+      const firstName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
       const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
       const AUTH_URL = API_URL.replace("/api/v1", "/api/auth/sign-up/email");
