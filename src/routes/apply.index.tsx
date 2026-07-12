@@ -357,6 +357,7 @@ function ApplyPage() {
   const [confirmLastName, setConfirmLastName] = useState("");
   const [confirmFirstName, setConfirmFirstName] = useState("");
   const [confirmMiddleInitial, setConfirmMiddleInitial] = useState("");
+  const [digitCorrectedInName, setDigitCorrectedInName] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");
   const [idx, setIdx] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
@@ -411,6 +412,7 @@ function ApplyPage() {
         setConfirmLastName(lastName);
         setConfirmFirstName(firstName);
         setConfirmMiddleInitial(middleInitial);
+        setDigitCorrectedInName(!!json.data.digitCorrectedInName);
         
         const formattedName = `${lastName} ${firstName} ${middleInitial ? middleInitial + '.' : ''}`.trim().replace(/\s+/g, ' ');
         setForm(f => ({ ...f, fullName: formattedName }));
@@ -422,6 +424,7 @@ function ApplyPage() {
           setConfirmLastName("");
           setConfirmFirstName("");
           setConfirmMiddleInitial("");
+          setDigitCorrectedInName(false);
           setOcrError(json.message || "Unable to read Student ID. Manual entry required.");
         } else {
           throw new Error(json.message || "Could not read ID.");
@@ -635,6 +638,7 @@ function ApplyPage() {
     setConfirmLastName("");
     setConfirmFirstName("");
     setConfirmMiddleInitial("");
+    setDigitCorrectedInName(false);
     setConfirmEmail("");
     setStage("scan");
   };
@@ -730,6 +734,7 @@ function ApplyPage() {
                   lastName={confirmLastName}
                   firstName={confirmFirstName}
                   middleInitial={confirmMiddleInitial}
+                  digitCorrected={digitCorrectedInName}
                   email={confirmEmail}
                   onStudentId={setConfirmStudentId}
                   onLastName={setConfirmLastName}
@@ -1011,6 +1016,7 @@ function ConfirmIdStep({
   lastName,
   firstName,
   middleInitial,
+  digitCorrected,
   email,
   onStudentId,
   onLastName,
@@ -1028,6 +1034,7 @@ function ConfirmIdStep({
   lastName: string;
   firstName: string;
   middleInitial: string;
+  digitCorrected?: boolean;
   email: string;
   onStudentId: (v: string) => void;
   onLastName: (v: string) => void;
@@ -1115,6 +1122,12 @@ function ConfirmIdStep({
             />
           </label>
         </div>
+
+        {digitCorrected && (
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-500/90 font-medium">
+            Suspected numbers in name fields were automatically corrected. Please verify they are correct.
+          </div>
+        )}
 
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
