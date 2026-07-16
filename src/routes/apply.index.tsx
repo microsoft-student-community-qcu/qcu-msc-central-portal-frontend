@@ -417,7 +417,11 @@ function ApplyPage() {
         setConfirmMiddleInitial(middleInitial);
         setDigitCorrectedInName(!!json.data.digitCorrectedInName);
         
-        const formattedName = `${lastName} ${firstName} ${middleInitial ? middleInitial + '.' : ''}`.trim().replace(/\s+/g, ' ');
+        let cleanMI = middleInitial.trim().replace(/\.+$/, "");
+        if (cleanMI) {
+          cleanMI = cleanMI + ".";
+        }
+        const formattedName = `${lastName}, ${firstName}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
         setForm(f => ({ ...f, fullName: formattedName }));
       } else {
         if (json.data && json.data.manualRequired) {
@@ -461,7 +465,11 @@ function ApplyPage() {
       return;
     }
     setOcrError(null);
-    const formattedName = `${confirmLastName.trim()} ${confirmFirstName.trim()} ${confirmMiddleInitial.trim() ? confirmMiddleInitial.trim() + '.' : ''}`.trim().replace(/\s+/g, ' ');
+    let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+    if (cleanMI) {
+      cleanMI = cleanMI + ".";
+    }
+    const formattedName = `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
     setForm((f) => ({
       ...f,
       studentId: confirmStudentId.trim(),
@@ -540,12 +548,16 @@ function ApplyPage() {
     try {
       const fd = new FormData();
       
-      const nameParts = form.fullName.trim().split(" ");
-      const lastName = nameParts[0] || "";
-      const firstName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+      if (cleanMI) {
+        cleanMI = cleanMI + ".";
+      }
       
-      fd.append("firstName", firstName);
-      fd.append("lastName", lastName);
+      fd.append("firstName", confirmFirstName.trim());
+      fd.append("lastName", confirmLastName.trim());
+      if (cleanMI) {
+        fd.append("middleInitial", cleanMI);
+      }
       fd.append("email", form.email);
       fd.append("college", form.college);
       fd.append("program", form.program);
@@ -608,6 +620,10 @@ function ApplyPage() {
       startAccountRedirect();
       setRedirectingToAccount(true);
       try {
+        let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+        if (cleanMI) {
+          cleanMI = cleanMI + ".";
+        }
         sessionStorage.setItem(
           "qcumsc.applicant",
           JSON.stringify({
@@ -616,6 +632,9 @@ function ApplyPage() {
             email: form.email,
             role: form.role,
             provisional: manualRequired,
+            firstName: confirmFirstName.trim(),
+            lastName: confirmLastName.trim(),
+            middleInitial: cleanMI,
           }),
         );
       } catch {
