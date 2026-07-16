@@ -80,7 +80,10 @@ function ApplyAccountPage() {
       const lastName = nameParts[0] || "";
       const firstName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
 
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+      const API_URL = import.meta.env.VITE_API_URL;
+      if (!API_URL) {
+        throw new Error("VITE_API_URL environment variable is required");
+      }
       const AUTH_URL = API_URL.replace("/api/v1", "/api/auth/sign-up/email");
       
       const res = await fetch(AUTH_URL, {
