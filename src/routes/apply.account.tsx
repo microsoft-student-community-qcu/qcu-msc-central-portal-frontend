@@ -37,6 +37,9 @@ type Applicant = {
   email: string;
   role: string;
   provisional: boolean;
+  firstName?: string;
+  lastName?: string;
+  middleInitial?: string;
 };
 
 function ApplyAccountPage() {
@@ -76,9 +79,9 @@ function ApplyAccountPage() {
     setSubmitting(true);
 
     try {
-      const nameParts = applicant.fullName.trim().split(" ");
-      const lastName = nameParts[0] || "";
-      const firstName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const firstName = applicant.firstName || (applicant.fullName.trim().split(" ").slice(1).join(" ") || "");
+      const lastName = applicant.lastName || (applicant.fullName.trim().split(" ")[0] || "");
+      const middleInitial = applicant.middleInitial || "";
 
       const API_URL = import.meta.env.VITE_API_URL;
       if (!API_URL) {
@@ -86,17 +89,22 @@ function ApplyAccountPage() {
       }
       const AUTH_URL = API_URL.replace("/api/v1", "/api/auth/sign-up/email");
       
+      const payload: Record<string, any> = {
+        name: applicant.fullName,
+        studentId: applicant.studentId,
+        lastName,
+        firstName,
+        email: applicant.email,
+        password
+      };
+      if (middleInitial) {
+        payload.middleInitial = middleInitial;
+      }
+
       const res = await fetch(AUTH_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: applicant.fullName,
-          studentId: applicant.studentId,
-          lastName,
-          firstName,
-          email: applicant.email,
-          password
-        })
+        body: JSON.stringify(payload)
       });
 
       const json = await res.json().catch(() => ({}));
