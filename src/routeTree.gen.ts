@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ComingSoonRouteImport } from './routes/coming-soon'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventsIndexRouteImport } from './routes/events.index'
 import { Route as ApplyIndexRouteImport } from './routes/apply.index'
@@ -25,6 +26,11 @@ import { Route as ApplyDashboardRouteImport } from './routes/apply.dashboard'
 import { Route as ApplyAccountRouteImport } from './routes/apply.account'
 import { Route as EventsEventIdRegisterRouteImport } from './routes/events.$eventId.register'
 
+const ComingSoonRoute = ComingSoonRouteImport.update({
+  id: '/coming-soon',
+  path: '/coming-soon',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -103,6 +109,7 @@ const EventsEventIdRegisterRoute = EventsEventIdRegisterRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
   '/portal/certificates': typeof PortalCertificatesRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
   '/portal/certificates': typeof PortalCertificatesRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
   '/portal/certificates': typeof PortalCertificatesRoute
@@ -157,6 +166,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
     | '/portal/certificates'
@@ -174,6 +184,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
     | '/portal/certificates'
@@ -191,6 +202,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
     | '/portal/certificates'
@@ -209,6 +221,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComingSoonRoute: typeof ComingSoonRoute
   ApplyAccountRoute: typeof ApplyAccountRoute
   ApplyDashboardRoute: typeof ApplyDashboardRoute
   PortalCertificatesRoute: typeof PortalCertificatesRoute
@@ -227,6 +240,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/coming-soon': {
+      id: '/coming-soon'
+      path: '/coming-soon'
+      fullPath: '/coming-soon'
+      preLoaderRoute: typeof ComingSoonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -337,6 +357,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComingSoonRoute: ComingSoonRoute,
   ApplyAccountRoute: ApplyAccountRoute,
   ApplyDashboardRoute: ApplyDashboardRoute,
   PortalCertificatesRoute: PortalCertificatesRoute,
