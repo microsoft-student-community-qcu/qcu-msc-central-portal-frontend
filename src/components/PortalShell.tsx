@@ -189,27 +189,28 @@ export function PortalShell({
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto px-5 py-8 sm:px-10 sm:py-10">
               {/* Page header */}
-              <div className="mb-10 sm:mb-12">
-                <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-brand-blue-deep sm:text-6xl">
-                  {title.includes(",") ? (
-                    <>
-                      {title.split(",")[0]},
-                      <br />
-                      <span className="text-brand-blue">
-                        {title.split(",").slice(1).join(",").trim() || firstName}
-                      </span>
-                    </>
-                  ) : (
-                    title
+              {user.role === "member" && (
+                <div className="mb-10 sm:mb-12">
+                  <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-brand-blue-deep sm:text-6xl">
+                    {title.includes(",") ? (
+                      <>
+                        {title.split(",")[0]},
+                        <br />
+                        <span className="text-brand-blue">
+                          {title.split(",").slice(1).join(",").trim() || firstName}
+                        </span>
+                      </>
+                    ) : (
+                      title
+                    )}
+                  </h1>
+                  {subtitle && (
+                    <p className="mt-4 max-w-lg font-body text-base text-brand-blue-deep/90 sm:text-lg">
+                      {subtitle}
+                    </p>
                   )}
-                </h1>
-                {subtitle && (
-                  <p className="mt-4 max-w-lg font-body text-base text-brand-blue-deep/90 sm:text-lg">
-                    {subtitle}
-                  </p>
-                )}
-
-              </div>
+                </div>
+              )}
 
               {children}
             </div>
