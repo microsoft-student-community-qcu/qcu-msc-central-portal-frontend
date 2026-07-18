@@ -10,6 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export const Route = createFileRoute("/portal/tracking")({
   head: () => ({
@@ -464,6 +471,62 @@ function TrackingPage() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="campus">Campus</Label>
+                      <Select
+                        disabled={isPersonalLocked}
+                        value={formData.campus}
+                        onValueChange={(val) => setFormData({ ...formData, campus: val })}
+                      >
+                        <SelectTrigger className="w-full rounded-xl border border-brand-blue-deep/20 focus:border-orange-500 bg-white/50 h-10">
+                          <SelectValue placeholder="Select Campus" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="SAN_BARTOLOME_MAIN">San Bartolome (Main)</SelectItem>
+                          <SelectItem value="SAN_FRANCISCO">San Francisco</SelectItem>
+                          <SelectItem value="BATASAN">Batasan</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select
+                        disabled={isPersonalLocked}
+                        value={formData.gender}
+                        onValueChange={(val) => setFormData({ ...formData, gender: val })}
+                      >
+                        <SelectTrigger className="w-full rounded-xl border border-brand-blue-deep/20 focus:border-orange-500 bg-white/50 h-10">
+                          <SelectValue placeholder="Select Gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="MALE">Male</SelectItem>
+                          <SelectItem value="FEMALE">Female</SelectItem>
+                          <SelectItem value="LGBTQIA">LGBTQIA+</SelectItem>
+                          <SelectItem value="PREFER_NOT_TO_SAY">Prefer not to say</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dateOfBirth">Date of Birth</Label>
+                      <Input
+                        id="dateOfBirth"
+                        type="date"
+                        disabled={isPersonalLocked}
+                        value={formData.dateOfBirth}
+                        onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                        className="rounded-xl border border-brand-blue-deep/20 focus:border-orange-500 bg-white/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="placeOfBirth">Place of Birth</Label>
+                      <Input
+                        id="placeOfBirth"
+                        disabled={isPersonalLocked}
+                        value={formData.placeOfBirth}
+                        onChange={(e) => setFormData({ ...formData, placeOfBirth: e.target.value })}
+                        className="rounded-xl border border-brand-blue-deep/20 focus:border-orange-500 bg-white/50"
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="college">College</Label>
                       <Input
                         id="college"
@@ -500,6 +563,16 @@ function TrackingPage() {
                         disabled={isPersonalLocked}
                         value={formData.facebookLink}
                         onChange={(e) => setFormData({ ...formData, facebookLink: e.target.value })}
+                        className="rounded-xl border border-brand-blue-deep/20 focus:border-orange-500 bg-white/50"
+                      />
+                    </div>
+                    <div className="space-y-2 sm:col-span-2">
+                      <Label htmlFor="houseAddress">House Address</Label>
+                      <Input
+                        id="houseAddress"
+                        disabled={isPersonalLocked}
+                        value={formData.houseAddress}
+                        onChange={(e) => setFormData({ ...formData, houseAddress: e.target.value })}
                         className="rounded-xl border border-brand-blue-deep/20 focus:border-orange-500 bg-white/50"
                       />
                     </div>

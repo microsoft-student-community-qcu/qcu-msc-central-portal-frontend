@@ -207,8 +207,8 @@ const QUESTIONS: Question[] = [
     key: "campus",
     chapter: "Chapter 2 · Your academic life",
     prompt: "Which QCU campus?",
-    placeholder: "San Bartolome",
-    kind: "text",
+    kind: "select",
+    options: ["San Bartolome (Main)", "San Francisco", "Batasan"],
     validate: required,
   },
   // studentId is captured via Zonal OCR before the form starts.
