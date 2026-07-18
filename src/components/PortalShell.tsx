@@ -30,13 +30,13 @@ type NavItem = {
 
 const MEMBER_NAV: NavItem[] = [
   { to: "/portal/dashboard", label: "Workspace", icon: LayoutDashboard },
+  { to: "/portal/inbox", label: "M&D Inbox", icon: Bell },
   { to: "/portal/profile", label: "Profile", icon: UserIcon },
 ];
 
 const APPLICANT_NAV: NavItem[] = [
   { to: "/portal/tracking", label: "Status", icon: ListChecks },
   { to: "/portal/inbox", label: "M&D Inbox", icon: Bell },
-  { to: "/portal/profile", label: "Profile", icon: UserIcon },
 ];
 
 function navForRole(role: PortalRole): NavItem[] {

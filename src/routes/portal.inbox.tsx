@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
 import { Bell, MailOpen, X, Satellite } from "lucide-react";
 import { PortalCard, PortalShell } from "@/components/PortalShell";
+import { usePortalUser } from "@/lib/portal-auth";
 
 export const Route = createFileRoute("/portal/inbox")({
   head: () => ({ meta: [{ title: "M&D Inbox · QCU MSC" }] }),
@@ -110,8 +111,15 @@ const INBOX = [
 type Filter = "all" | "unread";
 
 function InboxPage() {
+  const user = usePortalUser();
+  const navigate = useNavigate();
   const [items, setItems] = useState(INBOX);
   const [filter, setFilter] = useState<Filter>("all");
+
+  if (!user) {
+    void navigate({ to: "/portal/login" });
+    return null;
+  }
 
   const unreadCount = items.filter((m) => m.unread).length;
 
@@ -130,7 +138,7 @@ function InboxPage() {
 
   return (
     <PortalShell
-      requireRole="applicant"
+      requireRole={user.role}
       title="Mission control"
       subtitle="Transmissions from Management & Development at base."
     >
