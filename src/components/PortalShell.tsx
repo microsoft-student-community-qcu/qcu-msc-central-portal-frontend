@@ -14,11 +14,13 @@ import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 
 import {
+  getPortalUser,
   routeForRole,
   setPortalUser,
   usePortalUser,
   type PortalRole,
 } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
 
 type NavItem = {
   to: string;
@@ -63,6 +65,43 @@ export function PortalShell({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const syncSession = async () => {
+      try {
+        const { data, error } = await authClient.getSession();
+        if (error || !data?.user) {
+          setPortalUser(null);
+          void navigate({ to: "/portal/login" });
+          return;
+        }
+
+        const backendUser = data.user as any;
+        let backendPortalRole: PortalRole = "restricted";
+        if (backendUser.role === "APPLICANT") {
+          backendPortalRole = "applicant";
+        } else if (backendUser.role === "MEMBER") {
+          backendPortalRole = "member";
+        }
+
+        const cachedUser = getPortalUser();
+        if (cachedUser && (cachedUser.role !== backendPortalRole || cachedUser.email !== backendUser.email)) {
+          setPortalUser({
+            email: backendUser.email,
+            fullName: backendUser.name || `${backendUser.firstName || ""} ${backendUser.lastName || ""}`.trim() || "User",
+            studentNumber: backendUser.studentId || "",
+            role: backendPortalRole,
+          });
+        }
+      } catch (err) {
+        console.error("Session sync failed:", err);
+      }
+    };
+
+    void syncSession();
+  }, [mounted, navigate]);
 
   useEffect(() => {
     if (!mounted) return;
