@@ -375,7 +375,11 @@ function ApplyPage() {
   useEffect(() => {
     if (hasActiveAccountRedirect()) {
       setRedirectingToAccount(true);
-      void navigate({ to: "/apply/account", replace: true }).catch(() => {
+      void navigate({
+        to: "/apply/account",
+        search: { token: undefined },
+        replace: true
+      }).catch(() => {
         setRedirectingToAccount(false);
       });
     }
@@ -402,6 +406,15 @@ function ApplyPage() {
       const json = await res.json();
 
       if (res.ok && json.success) {
+        if (json.data && json.data.alreadySubmitted) {
+          void navigate({
+            to: "/apply/account",
+            search: { token: json.data.setupToken },
+            replace: true
+          });
+          return;
+        }
+
         setOcrSessionId(json.data.ocrSessionId);
         setManualRequired(json.data.manualRequired);
         
@@ -627,6 +640,7 @@ function ApplyPage() {
         sessionStorage.setItem(
           "qcumsc.applicant",
           JSON.stringify({
+            applicantId: json.data.id,
             studentId: manualRequired ? form.studentId : json.data.studentId,
             fullName: form.fullName,
             email: form.email,
@@ -640,7 +654,11 @@ function ApplyPage() {
       } catch {
         /* ignore */
       }
-      void navigate({ to: "/apply/account", replace: true }).catch(() => {
+      void navigate({
+        to: "/apply/account",
+        search: { token: json.data.setupToken },
+        replace: true
+      }).catch(() => {
         setRedirectingToAccount(false);
       });
     } catch (err: any) {

@@ -22,6 +22,7 @@ import { Route as PortalInboxRouteImport } from './routes/portal.inbox'
 import { Route as PortalEventsRouteImport } from './routes/portal.events'
 import { Route as PortalDashboardRouteImport } from './routes/portal.dashboard'
 import { Route as PortalCertificatesRouteImport } from './routes/portal.certificates'
+import { Route as AuthSetupPasswordRouteImport } from './routes/auth.setup-password'
 import { Route as ApplyDashboardRouteImport } from './routes/apply.dashboard'
 import { Route as ApplyAccountRouteImport } from './routes/apply.account'
 import { Route as EventsEventIdRegisterRouteImport } from './routes/events.$eventId.register'
@@ -91,6 +92,11 @@ const PortalCertificatesRoute = PortalCertificatesRouteImport.update({
   path: '/portal/certificates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthSetupPasswordRoute = AuthSetupPasswordRouteImport.update({
+  id: '/auth/setup-password',
+  path: '/auth/setup-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApplyDashboardRoute = ApplyDashboardRouteImport.update({
   id: '/apply/dashboard',
   path: '/apply/dashboard',
@@ -112,6 +118,7 @@ export interface FileRoutesByFullPath {
   '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
+  '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
   '/portal/events': typeof PortalEventsRoute
@@ -130,6 +137,7 @@ export interface FileRoutesByTo {
   '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
+  '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
   '/portal/events': typeof PortalEventsRoute
@@ -149,6 +157,7 @@ export interface FileRoutesById {
   '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
+  '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
   '/portal/events': typeof PortalEventsRoute
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
+    | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
     | '/portal/events'
@@ -187,6 +197,7 @@ export interface FileRouteTypes {
     | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
+    | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
     | '/portal/events'
@@ -205,6 +216,7 @@ export interface FileRouteTypes {
     | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
+    | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
     | '/portal/events'
@@ -224,6 +236,7 @@ export interface RootRouteChildren {
   ComingSoonRoute: typeof ComingSoonRoute
   ApplyAccountRoute: typeof ApplyAccountRoute
   ApplyDashboardRoute: typeof ApplyDashboardRoute
+  AuthSetupPasswordRoute: typeof AuthSetupPasswordRoute
   PortalCertificatesRoute: typeof PortalCertificatesRoute
   PortalDashboardRoute: typeof PortalDashboardRoute
   PortalEventsRoute: typeof PortalEventsRoute
@@ -331,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalCertificatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/setup-password': {
+      id: '/auth/setup-password'
+      path: '/auth/setup-password'
+      fullPath: '/auth/setup-password'
+      preLoaderRoute: typeof AuthSetupPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apply/dashboard': {
       id: '/apply/dashboard'
       path: '/apply/dashboard'
@@ -360,6 +380,7 @@ const rootRouteChildren: RootRouteChildren = {
   ComingSoonRoute: ComingSoonRoute,
   ApplyAccountRoute: ApplyAccountRoute,
   ApplyDashboardRoute: ApplyDashboardRoute,
+  AuthSetupPasswordRoute: AuthSetupPasswordRoute,
   PortalCertificatesRoute: PortalCertificatesRoute,
   PortalDashboardRoute: PortalDashboardRoute,
   PortalEventsRoute: PortalEventsRoute,
