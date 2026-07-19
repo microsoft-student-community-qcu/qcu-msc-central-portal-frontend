@@ -98,17 +98,6 @@ function ComingSoon({
         </div>
       </m.div>
 
-      {/* Flying paper planes */}
-      <div className="absolute left-[8%] top-[42%] z-[1]" aria-hidden="true">
-        <PaperPlane color="var(--brand-orange)" size={72} rotate={-18} duration={4.5} />
-      </div>
-      <div className="absolute right-[10%] top-[30%] z-[1]" aria-hidden="true">
-        <PaperPlane color="var(--brand-blue)" size={56} rotate={24} duration={3.8} delay={-1.2} />
-      </div>
-      <div className="absolute right-[22%] top-[58%] z-[1]" aria-hidden="true">
-        <PaperPlane color="var(--brand-yellow)" size={38} rotate={-8} duration={4.2} delay={-2.4} />
-      </div>
-
       <div
         className="pointer-events-none absolute inset-x-0 bottom-0 z-0 animate-float"
         style={{ animationDuration: "14s" }}

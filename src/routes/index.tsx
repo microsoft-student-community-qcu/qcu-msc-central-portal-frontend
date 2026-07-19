@@ -21,6 +21,10 @@ import {
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import azureCommunityLogo from "../assets/images/partners/microsoft-azure-community-philippines.svg";
+import bitsLogo from "../assets/images/partners/bits.svg";
+import mscPupLogo from "../assets/images/partners/msc-pup.svg";
+import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -87,19 +91,13 @@ const EVENTS: EventItem[] = [
   },
 ];
 
-const PARTNERS = [
-  "Microsoft",
-  "GitHub",
-  "LinkedIn",
-  "Canva",
-  "Figma",
-  "Vercel",
-  "Notion",
-  "AWS",
-  "Google",
-  "Meta",
-  "OpenAI",
-  "Slack",
+type Partner = { name: string; logo: string };
+
+const PARTNERS: Partner[] = [
+  { name: "Microsoft Azure Community Philippines", logo: azureCommunityLogo },
+  { name: "BITS", logo: bitsLogo },
+  { name: "MSC PUP", logo: mscPupLogo },
+  { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
 ];
 
 function Landing() {
@@ -913,16 +911,16 @@ function WallOfLogos() {
         </h2>
       </div>
       <p className="mx-auto mt-3 max-w-xl text-center font-body text-sm text-brand-blue-deep/65">
-        Logo lockups land here soon — placeholders keep the rhythm in the meantime.
+        Communities and organizations we've built, learned, and shipped alongside.
       </p>
       <LogoSlideshow partners={PARTNERS} accents={accents} />
     </section>
   );
 }
 
-function LogoSlideshow({ partners, accents }: { partners: string[]; accents: string[] }) {
+function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: string[] }) {
   const perSlide = 4;
-  const slides: string[][] = [];
+  const slides: Partner[][] = [];
   for (let i = 0; i < partners.length; i += perSlide) {
     slides.push(partners.slice(i, i + perSlide));
   }
@@ -951,19 +949,13 @@ function LogoSlideshow({ partners, accents }: { partners: string[]; accents: str
           >
             {group.map((p, i) => {
               const accent = accents[(sIdx * perSlide + i) % accents.length];
-              const initials = p
-                .split(/\s+/)
-                .map((w) => w[0])
-                .join("")
-                .slice(0, 3)
-                .toUpperCase();
               return (
                 <div
-                  key={p}
+                  key={p.name}
                   className="group flex w-full max-w-[8rem] flex-col items-center gap-2 sm:w-28"
                 >
                   <div
-                    className="relative grid size-20 place-items-center rounded-full transition duration-300 group-hover:-translate-y-0.5 sm:size-24"
+                    className="relative grid aspect-square w-20 place-items-center rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
                     style={{
                       background:
                         "radial-gradient(circle at 30% 25%, color-mix(in oklab, white 95%, transparent), color-mix(in oklab, white 60%, transparent))",
@@ -980,17 +972,20 @@ function LogoSlideshow({ partners, accents }: { partners: string[]; accents: str
                         opacity: 0.55,
                       }}
                     />
-                    <span
-                      className="relative font-display text-base font-extrabold tracking-tight text-brand-blue-deep/85 sm:text-lg"
-                      style={{
-                        textShadow: `0 1px 0 color-mix(in oklab, ${accent} 25%, transparent)`,
-                      }}
-                    >
-                      {initials}
-                    </span>
+                    {/* object-contain + square container preserves each
+                        logo's native aspect ratio (all four source SVGs
+                        are 1:1, but this holds even if that changes) —
+                        never crops or stretches the mark. */}
+                    <img
+                      src={p.logo}
+                      alt={`${p.name} logo`}
+                      loading="lazy"
+                      decoding="async"
+                      className="relative h-full w-full object-contain"
+                    />
                   </div>
                   <span className="text-center font-heading text-xs font-semibold tracking-tight text-brand-blue-deep/80 sm:text-sm">
-                    {p}
+                    {p.name}
                   </span>
                 </div>
               );
@@ -999,24 +994,26 @@ function LogoSlideshow({ partners, accents }: { partners: string[]; accents: str
         ))}
       </div>
 
-      <div className="mt-5 flex items-center justify-center gap-2">
-        {slides.map((_, sIdx) => (
-          <button
-            key={sIdx}
-            type="button"
-            onClick={() => setIndex(sIdx)}
-            aria-label={`Show partner set ${sIdx + 1}`}
-            className="h-1.5 rounded-full transition-all"
-            style={{
-              width: sIdx === index ? 24 : 8,
-              background:
-                sIdx === index
-                  ? "var(--brand-blue-deep)"
-                  : "color-mix(in oklab, var(--brand-blue-deep) 25%, transparent)",
-            }}
-          />
-        ))}
-      </div>
+      {slides.length > 1 && (
+        <div className="mt-5 flex items-center justify-center gap-2">
+          {slides.map((_, sIdx) => (
+            <button
+              key={sIdx}
+              type="button"
+              onClick={() => setIndex(sIdx)}
+              aria-label={`Show partner set ${sIdx + 1}`}
+              className="h-1.5 rounded-full transition-all"
+              style={{
+                width: sIdx === index ? 24 : 8,
+                background:
+                  sIdx === index
+                    ? "var(--brand-blue-deep)"
+                    : "color-mix(in oklab, var(--brand-blue-deep) 25%, transparent)",
+              }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
