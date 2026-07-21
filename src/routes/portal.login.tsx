@@ -12,6 +12,8 @@ import {
 } from "@/lib/portal-auth";
 import { authClient } from "@/lib/auth-client";
 
+import { getApiEndpoint } from "@/lib/api-config";
+
 export const Route = createFileRoute("/portal/login")({
   head: () => ({
     meta: [
@@ -36,7 +38,7 @@ function PortalLoginPage() {
     }
 
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/auth/student/sign-in`, {
+      const res = await fetch(getApiEndpoint("/api/v1/auth/student/sign-in"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
