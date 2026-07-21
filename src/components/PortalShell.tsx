@@ -14,11 +14,13 @@ import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 
 import {
+  getPortalUser,
   routeForRole,
   setPortalUser,
   usePortalUser,
   type PortalRole,
 } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
 
 type NavItem = {
   to: string;
@@ -28,13 +30,13 @@ type NavItem = {
 
 const MEMBER_NAV: NavItem[] = [
   { to: "/portal/dashboard", label: "Workspace", icon: LayoutDashboard },
+  { to: "/portal/inbox", label: "M&D Inbox", icon: Bell },
   { to: "/portal/profile", label: "Profile", icon: UserIcon },
 ];
 
 const APPLICANT_NAV: NavItem[] = [
   { to: "/portal/tracking", label: "Status", icon: ListChecks },
   { to: "/portal/inbox", label: "M&D Inbox", icon: Bell },
-  { to: "/portal/profile", label: "Profile", icon: UserIcon },
 ];
 
 function navForRole(role: PortalRole): NavItem[] {
@@ -63,6 +65,43 @@ export function PortalShell({
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+
+    const syncSession = async () => {
+      try {
+        const { data, error } = await authClient.getSession();
+        if (error || !data?.user) {
+          setPortalUser(null);
+          void navigate({ to: "/portal/login" });
+          return;
+        }
+
+        const backendUser = data.user as any;
+        let backendPortalRole: PortalRole = "restricted";
+        if (backendUser.role === "APPLICANT") {
+          backendPortalRole = "applicant";
+        } else if (backendUser.role === "MEMBER") {
+          backendPortalRole = "member";
+        }
+
+        const cachedUser = getPortalUser();
+        if (cachedUser && (cachedUser.role !== backendPortalRole || cachedUser.email !== backendUser.email)) {
+          setPortalUser({
+            email: backendUser.email,
+            fullName: backendUser.name || `${backendUser.firstName || ""} ${backendUser.lastName || ""}`.trim() || "User",
+            studentNumber: backendUser.studentId || "",
+            role: backendPortalRole,
+          });
+        }
+      } catch (err) {
+        console.error("Session sync failed:", err);
+      }
+    };
+
+    void syncSession();
+  }, [mounted, navigate]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -189,27 +228,28 @@ export function PortalShell({
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto px-5 py-8 sm:px-10 sm:py-10">
               {/* Page header */}
-              <div className="mb-10 sm:mb-12">
-                <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-brand-blue-deep sm:text-6xl">
-                  {title.includes(",") ? (
-                    <>
-                      {title.split(",")[0]},
-                      <br />
-                      <span className="text-brand-blue">
-                        {title.split(",").slice(1).join(",").trim() || firstName}
-                      </span>
-                    </>
-                  ) : (
-                    title
+              {user.role === "member" && (
+                <div className="mb-10 sm:mb-12">
+                  <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-brand-blue-deep sm:text-6xl">
+                    {title.includes(",") ? (
+                      <>
+                        {title.split(",")[0]},
+                        <br />
+                        <span className="text-brand-blue">
+                          {title.split(",").slice(1).join(",").trim() || firstName}
+                        </span>
+                      </>
+                    ) : (
+                      title
+                    )}
+                  </h1>
+                  {subtitle && (
+                    <p className="mt-4 max-w-lg font-body text-base text-brand-blue-deep/90 sm:text-lg">
+                      {subtitle}
+                    </p>
                   )}
-                </h1>
-                {subtitle && (
-                  <p className="mt-4 max-w-lg font-body text-base text-brand-blue-deep/90 sm:text-lg">
-                    {subtitle}
-                  </p>
-                )}
-
-              </div>
+                </div>
+              )}
 
               {children}
             </div>

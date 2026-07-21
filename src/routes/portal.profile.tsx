@@ -12,19 +12,18 @@ function ProfilePage() {
   const user = usePortalUser();
   const navigate = useNavigate();
 
-  // Allow both member and applicant — shell handles role redirect by being told the actual role.
   if (!user) {
     void navigate({ to: "/portal/login" });
     return null;
   }
-  if (user.role === "restricted") {
-    void navigate({ to: "/portal/restricted" });
+  if (user.role !== "member") {
+    void navigate({ to: "/portal/tracking" });
     return null;
   }
 
   return (
     <PortalShell
-      requireRole={user.role}
+      requireRole="member"
       title="Crew profile"
       subtitle="Your astronaut record — verified against your QCU identity before launch."
 

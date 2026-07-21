@@ -207,8 +207,8 @@ const QUESTIONS: Question[] = [
     key: "campus",
     chapter: "Chapter 2 · Your academic life",
     prompt: "Which QCU campus?",
-    placeholder: "San Bartolome",
-    kind: "text",
+    kind: "select",
+    options: ["San Bartolome (Main)", "San Francisco", "Batasan"],
     validate: required,
   },
   // studentId is captured via Zonal OCR before the form starts.
@@ -354,7 +354,10 @@ function ApplyPage() {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
-  const [confirmFullName, setConfirmFullName] = useState("");
+  const [confirmLastName, setConfirmLastName] = useState("");
+  const [confirmFirstName, setConfirmFirstName] = useState("");
+  const [confirmMiddleInitial, setConfirmMiddleInitial] = useState("");
+  const [digitCorrectedInName, setDigitCorrectedInName] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");
   const [idx, setIdx] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
@@ -372,7 +375,11 @@ function ApplyPage() {
   useEffect(() => {
     if (hasActiveAccountRedirect()) {
       setRedirectingToAccount(true);
-      void navigate({ to: "/apply/account", replace: true }).catch(() => {
+      void navigate({
+        to: "/apply/account",
+        search: { token: undefined },
+        replace: true
+      }).catch(() => {
         setRedirectingToAccount(false);
       });
     }
@@ -391,25 +398,53 @@ function ApplyPage() {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
       
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+      const API_URL = import.meta.env.VITE_API_URL;
+      if (!API_URL) {
+        throw new Error("VITE_API_URL environment variable is required");
+      }
       const res = await fetch(`${API_URL}/ocr/verify`, { method: "POST", body: fd });
       const json = await res.json();
 
       if (res.ok && json.success) {
+        if (json.data && json.data.alreadySubmitted) {
+          void navigate({
+            to: "/apply/account",
+            search: { token: json.data.setupToken },
+            replace: true
+          });
+          return;
+        }
+
         setOcrSessionId(json.data.ocrSessionId);
         setManualRequired(json.data.manualRequired);
         
         // Pre-fill
         setConfirmStudentId(json.data.studentId || "");
-        setConfirmFullName(json.data.fullName || "");
         
-        setForm(f => ({ ...f, fullName: json.data.fullName || "" }));
+        const lastName = json.data.lastName || "";
+        const firstName = json.data.firstName || "";
+        const middleInitial = json.data.middleInitial || "";
+        
+        setConfirmLastName(lastName);
+        setConfirmFirstName(firstName);
+        setConfirmMiddleInitial(middleInitial);
+        setDigitCorrectedInName(!!json.data.digitCorrectedInName);
+        
+        let cleanMI = middleInitial.trim().replace(/\.+$/, "");
+        if (cleanMI) {
+          cleanMI = cleanMI + ".";
+        }
+        const formattedName = `${lastName}, ${firstName}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
+        setForm(f => ({ ...f, fullName: formattedName }));
       } else {
         if (json.data && json.data.manualRequired) {
           setOcrSessionId(json.data.ocrSessionId);
           setManualRequired(true);
           setConfirmStudentId("");
-          setConfirmFullName("");
+          setConfirmLastName("");
+          setConfirmFirstName("");
+          setConfirmMiddleInitial("");
+          setDigitCorrectedInName(false);
           setOcrError(json.message || "Unable to read Student ID. Manual entry required.");
         } else {
           throw new Error(json.message || "Could not read ID.");
@@ -429,8 +464,8 @@ function ApplyPage() {
   };
 
   const confirmAndStart = () => {
-    if (!confirmStudentId.trim() || !confirmFullName.trim()) {
-      setOcrError("Please complete your student number and full name.");
+    if (!confirmStudentId.trim() || !confirmLastName.trim() || !confirmFirstName.trim()) {
+      setOcrError("Please complete your student number, last name, and first name.");
       return;
     }
     if (!/^\d{2}-\d{4}$/.test(confirmStudentId.trim())) {
@@ -443,10 +478,15 @@ function ApplyPage() {
       return;
     }
     setOcrError(null);
+    let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+    if (cleanMI) {
+      cleanMI = cleanMI + ".";
+    }
+    const formattedName = `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
     setForm((f) => ({
       ...f,
       studentId: confirmStudentId.trim(),
-      fullName: confirmFullName.trim(),
+      fullName: formattedName,
       email: confirmEmail.trim(),
     }));
     setStage("form");
@@ -521,12 +561,16 @@ function ApplyPage() {
     try {
       const fd = new FormData();
       
-      const nameParts = form.fullName.trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+      if (cleanMI) {
+        cleanMI = cleanMI + ".";
+      }
       
-      fd.append("firstName", firstName);
-      fd.append("lastName", lastName);
+      fd.append("firstName", confirmFirstName.trim());
+      fd.append("lastName", confirmLastName.trim());
+      if (cleanMI) {
+        fd.append("middleInitial", cleanMI);
+      }
       fd.append("email", form.email);
       fd.append("college", form.college);
       fd.append("program", form.program);
@@ -567,7 +611,10 @@ function ApplyPage() {
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
+      const API_URL = import.meta.env.VITE_API_URL;
+      if (!API_URL) {
+        throw new Error("VITE_API_URL environment variable is required");
+      }
       const res = await fetch(`${API_URL}/applicants`, {
         method: "POST",
         body: fd
@@ -586,20 +633,32 @@ function ApplyPage() {
       startAccountRedirect();
       setRedirectingToAccount(true);
       try {
+        let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+        if (cleanMI) {
+          cleanMI = cleanMI + ".";
+        }
         sessionStorage.setItem(
           "qcumsc.applicant",
           JSON.stringify({
+            applicantId: json.data.id,
             studentId: manualRequired ? form.studentId : json.data.studentId,
             fullName: form.fullName,
             email: form.email,
             role: form.role,
             provisional: manualRequired,
+            firstName: confirmFirstName.trim(),
+            lastName: confirmLastName.trim(),
+            middleInitial: cleanMI,
           }),
         );
       } catch {
         /* ignore */
       }
-      void navigate({ to: "/apply/account", replace: true }).catch(() => {
+      void navigate({
+        to: "/apply/account",
+        search: { token: json.data.setupToken },
+        replace: true
+      }).catch(() => {
         setRedirectingToAccount(false);
       });
     } catch (err: any) {
@@ -619,7 +678,10 @@ function ApplyPage() {
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(null);
     setConfirmStudentId("");
-    setConfirmFullName("");
+    setConfirmLastName("");
+    setConfirmFirstName("");
+    setConfirmMiddleInitial("");
+    setDigitCorrectedInName(false);
     setConfirmEmail("");
     setStage("scan");
   };
@@ -712,10 +774,15 @@ function ApplyPage() {
                   loading={ocrLoading}
                   error={ocrError}
                   studentId={confirmStudentId}
-                  fullName={confirmFullName}
+                  lastName={confirmLastName}
+                  firstName={confirmFirstName}
+                  middleInitial={confirmMiddleInitial}
+                  digitCorrected={digitCorrectedInName}
                   email={confirmEmail}
                   onStudentId={setConfirmStudentId}
-                  onFullName={setConfirmFullName}
+                  onLastName={setConfirmLastName}
+                  onFirstName={setConfirmFirstName}
+                  onMiddleInitial={setConfirmMiddleInitial}
                   onEmail={setConfirmEmail}
                   isManual={manualRequired}
                   onBack={() => {
@@ -989,10 +1056,15 @@ function ConfirmIdStep({
   loading,
   error,
   studentId,
-  fullName,
+  lastName,
+  firstName,
+  middleInitial,
+  digitCorrected,
   email,
   onStudentId,
-  onFullName,
+  onLastName,
+  onFirstName,
+  onMiddleInitial,
   onEmail,
   isManual,
   onBack,
@@ -1002,10 +1074,15 @@ function ConfirmIdStep({
   loading: boolean;
   error: string | null;
   studentId: string;
-  fullName: string;
+  lastName: string;
+  firstName: string;
+  middleInitial: string;
+  digitCorrected?: boolean;
   email: string;
   onStudentId: (v: string) => void;
-  onFullName: (v: string) => void;
+  onLastName: (v: string) => void;
+  onFirstName: (v: string) => void;
+  onMiddleInitial: (v: string) => void;
   onEmail: (v: string) => void;
   isManual?: boolean;
   onBack: () => void;
@@ -1047,18 +1124,53 @@ function ConfirmIdStep({
           />
         </label>
 
-        <label className="block">
-          <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-            Full Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+        <div className="grid grid-cols-[1fr_1fr_0.4fr] gap-3">
+          <label className="block">
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              Last Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            </div>
+            <Input
+              value={lastName}
+              onChange={(e) => onLastName(e.target.value)}
+              placeholder={loading ? "Auto-filling…" : "Dela Cruz"}
+              disabled={loading}
+              className="h-12 bg-white/85 text-base"
+            />
+          </label>
+
+          <label className="block">
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              First Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            </div>
+            <Input
+              value={firstName}
+              onChange={(e) => onFirstName(e.target.value)}
+              placeholder={loading ? "Auto-filling…" : "Juan"}
+              disabled={loading}
+              className="h-12 bg-white/85 text-base"
+            />
+          </label>
+
+          <label className="block">
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              M.I. {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            </div>
+            <Input
+              value={middleInitial}
+              onChange={(e) => onMiddleInitial(e.target.value)}
+              placeholder={loading ? "…" : "S"}
+              disabled={loading}
+              maxLength={2}
+              className="h-12 bg-white/85 text-base text-center"
+            />
+          </label>
+        </div>
+
+        {digitCorrected && (
+          <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-500/90 font-medium">
+            Suspected numbers in name fields were automatically corrected. Please verify they are correct.
           </div>
-          <Input
-            value={fullName}
-            onChange={(e) => onFullName(e.target.value)}
-            placeholder={loading ? "Auto-filling…" : "Juan Dela Cruz"}
-            disabled={loading}
-            className="h-12 bg-white/85 text-base"
-          />
-        </label>
+        )}
 
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">

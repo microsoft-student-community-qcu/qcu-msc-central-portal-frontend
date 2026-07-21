@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Compass,
+  Eye,
+  EyeOff,
   Lock,
   Mail,
   Orbit,
@@ -16,8 +18,14 @@ import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
 import { clearAccountRedirect } from "@/lib/application-flow";
 import { setPortalUser } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/apply/account")({
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      token: search.token as string | undefined,
+    };
+  },
   head: () => ({
     meta: [
       { title: "Claim your cockpit · QCU MSC" },
@@ -32,30 +40,88 @@ export const Route = createFileRoute("/apply/account")({
 });
 
 type Applicant = {
+  applicantId?: string;
   studentId: string;
   fullName: string;
   email: string;
   role: string;
   provisional: boolean;
+  firstName?: string;
+  lastName?: string;
+  middleInitial?: string;
 };
 
 function ApplyAccountPage() {
   const navigate = useNavigate();
+  const { token } = Route.useSearch();
   const [applicant, setApplicant] = useState<Applicant | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     clearAccountRedirect();
-    try {
-      const raw = sessionStorage.getItem("qcumsc.applicant");
-      if (raw) setApplicant(JSON.parse(raw) as Applicant);
-    } catch {
-      /* ignore */
+    
+    if (token) {
+      setLoading(true);
+      setTokenError(null);
+      const API_URL = import.meta.env.VITE_API_URL;
+      if (!API_URL) {
+        setTokenError("Configuration error: API URL not set.");
+        setLoading(false);
+        return;
+      }
+      
+      fetch(`${API_URL}/users/validate-setup-token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token })
+      })
+        .then((res) => {
+          if (!res.ok) {
+            return res.json().then((json) => {
+              throw new Error(json.errors?.[0] || "Invalid or expired setup link.");
+            });
+          }
+          return res.json();
+        })
+        .then((json) => {
+          if (json.success && json.data) {
+            setApplicant({
+              applicantId: json.data.applicantId,
+              studentId: json.data.studentId,
+              fullName: `${json.data.lastName}, ${json.data.firstName}${json.data.middleInitial ? " " + json.data.middleInitial : ""}`.trim(),
+              email: json.data.email,
+              role: "applicant",
+              provisional: false,
+              firstName: json.data.firstName,
+              lastName: json.data.lastName,
+              middleInitial: json.data.middleInitial || "",
+            });
+          } else {
+            setTokenError("Could not retrieve applicant details.");
+          }
+        })
+        .catch((err) => {
+          setTokenError(err.message || "Failed to validate setup token.");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      try {
+        const raw = sessionStorage.getItem("qcumsc.applicant");
+        if (raw) setApplicant(JSON.parse(raw) as Applicant);
+      } catch {
+        /* ignore */
+      }
     }
-  }, []);
+  }, [token]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,29 +142,43 @@ function ApplyAccountPage() {
     setSubmitting(true);
 
     try {
-      const nameParts = applicant.fullName.trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const firstName = applicant.firstName || (applicant.fullName.trim().split(" ").slice(1).join(" ") || "");
+      const lastName = applicant.lastName || (applicant.fullName.trim().split(" ")[0] || "");
+      const middleInitial = applicant.middleInitial || "";
 
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
-      const AUTH_URL = API_URL.replace("/api/v1", "/api/auth/sign-up/email");
-      
-      const res = await fetch(AUTH_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: applicant.fullName,
-          studentId: applicant.studentId,
-          lastName,
-          firstName,
-          email: applicant.email,
-          password
-        })
-      });
+      const API_URL = import.meta.env.VITE_API_URL;
+      if (!API_URL) {
+        throw new Error("VITE_API_URL environment variable is required");
+      }
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json.message || "Failed to create account.");
+      const signUpRes = await authClient.signUp.email({
+        email: applicant.email,
+        password,
+        name: applicant.fullName,
+        studentId: applicant.studentId,
+        firstName,
+        lastName,
+        ...(middleInitial ? { middleInitial } : {}),
+      } as any);
+
+      if (signUpRes.error) {
+        throw new Error(signUpRes.error.message || "Failed to create account.");
+      }
+
+      if (applicant.applicantId) {
+        // Now link the applicant ID with the newly created user
+        try {
+          const linkRes = await authClient.$fetch(`${API_URL}/users/link-applicant`, {
+            method: "POST",
+            body: { applicantId: applicant.applicantId }
+          }) as any;
+          
+          if (linkRes && linkRes.success === false) {
+            console.error("Failed to link applicant to user account:", linkRes.message);
+          }
+        } catch (linkErr) {
+          console.error("Failed to link applicant to user account:", linkErr);
+        }
       }
 
       try {
@@ -126,6 +206,41 @@ function ApplyAccountPage() {
   };
 
   const firstName = applicant?.fullName?.split(" ")[0] ?? "cadet";
+
+  if (loading) {
+    return (
+      <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
+        <SkyBackdrop variant="space" />
+        <div className="text-center text-white space-y-4 relative z-10">
+          <Orbit className="size-12 animate-spin mx-auto text-brand-orange" />
+          <p className="font-heading text-lg font-bold">Verifying launch codes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (tokenError) {
+    return (
+      <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
+        <SkyBackdrop variant="space" />
+        <div className="relative z-10 max-w-md w-full mx-4 rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
+          <h2 className="font-display text-2xl font-bold text-red-500">Launch Code Expired</h2>
+          <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
+            {tokenError}
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/apply"
+              className="inline-flex items-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+              style={{ background: "var(--gradient-cta)" }}
+            >
+              <ArrowLeft className="size-4" /> Start New Application
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -243,26 +358,44 @@ function ApplyAccountPage() {
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
                     <Lock className="size-4" /> Password
                   </label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
-                    className="h-12 bg-white/85 text-base"
-                  />
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      className="h-12 bg-white/85 text-base pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-blue-deep/60 hover:text-brand-blue-deep transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
                     <Lock className="size-4" /> Confirm password
                   </label>
-                  <Input
-                    type="password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    placeholder="Re-enter your password"
-                    className="h-12 bg-white/85 text-base"
-                  />
+                  <div className="relative">
+                    <Input
+                      type={showConfirm ? "text" : "password"}
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      placeholder="Re-enter your password"
+                      className="h-12 bg-white/85 text-base pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(!showConfirm)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-blue-deep/60 hover:text-brand-blue-deep transition-colors"
+                    >
+                      {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 {error && (
