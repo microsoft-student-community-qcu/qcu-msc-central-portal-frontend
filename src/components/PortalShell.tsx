@@ -79,6 +79,13 @@ export function PortalShell({
         }
 
         const backendUser = data.user as any;
+        if (backendUser.role === "ADMIN_HR" || backendUser.role === "ADMIN_LOGISTICS") {
+          // Admin accounts are forbidden in the Student Portal.
+          setPortalUser(null);
+          void navigate({ to: "/portal/login" });
+          return;
+        }
+
         let backendPortalRole: PortalRole = "restricted";
         if (backendUser.role === "APPLICANT") {
           backendPortalRole = "applicant";
@@ -87,7 +94,7 @@ export function PortalShell({
         }
 
         const cachedUser = getPortalUser();
-        if (cachedUser && (cachedUser.role !== backendPortalRole || cachedUser.email !== backendUser.email)) {
+        if (!cachedUser || cachedUser.role !== backendPortalRole || cachedUser.email !== backendUser.email) {
           setPortalUser({
             email: backendUser.email,
             fullName: backendUser.name || `${backendUser.firstName || ""} ${backendUser.lastName || ""}`.trim() || "User",
