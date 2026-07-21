@@ -10,6 +10,7 @@ import {
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
+import * as Sentry from "@sentry/react";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PageTransition } from "../components/PageTransition";
 import { CosmicLoader } from "../components/CosmicLoader";
@@ -41,6 +42,7 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   console.error(error);
   const router = useRouter();
   useEffect(() => {
+    Sentry.captureException(error);
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
   }, [error]);
 
