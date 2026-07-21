@@ -10,7 +10,7 @@ export default defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: process.env.VITE_API_URL || "https://func-msc-qcu-backend-dev.azurewebsites.net",
+        target: process.env.VITE_API_URL || "http://localhost:5000",
         changeOrigin: true,
       },
     },
@@ -24,7 +24,7 @@ export default defineConfig({
     preset: "node-server",
     routeRules: {
       "/api/**": {
-        proxy: `${process.env.VITE_API_URL || "https://func-msc-qcu-backend-dev.azurewebsites.net"}/api/**`,
+        proxy: `${process.env.VITE_API_URL || "http://localhost:5000"}/api/**`,
       },
     },
   },
