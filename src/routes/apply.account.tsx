@@ -20,6 +20,8 @@ import { clearAccountRedirect } from "@/lib/application-flow";
 import { setPortalUser } from "@/lib/portal-auth";
 import { authClient } from "@/lib/auth-client";
 
+import { getApiEndpoint } from "@/lib/api-config";
+
 export const Route = createFileRoute("/apply/account")({
   validateSearch: (search: Record<string, unknown>) => {
     return {
@@ -70,14 +72,7 @@ function ApplyAccountPage() {
     if (token) {
       setLoading(true);
       setTokenError(null);
-      const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) {
-        setTokenError("Configuration error: API URL not set.");
-        setLoading(false);
-        return;
-      }
-      
-      fetch(`${API_URL}/users/validate-setup-token`, {
+      fetch(getApiEndpoint("/api/v1/users/validate-setup-token"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token })
@@ -145,11 +140,6 @@ function ApplyAccountPage() {
       const firstName = applicant.firstName || (applicant.fullName.trim().split(" ").slice(1).join(" ") || "");
       const lastName = applicant.lastName || (applicant.fullName.trim().split(" ")[0] || "");
       const middleInitial = applicant.middleInitial || "";
-
-      const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) {
-        throw new Error("VITE_API_URL environment variable is required");
-      }
 
       const signUpRes = await authClient.signUp.email({
         email: applicant.email,
