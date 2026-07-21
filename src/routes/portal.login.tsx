@@ -36,18 +36,27 @@ function PortalLoginPage() {
     }
 
     try {
-      const { data, error: authError } = await authClient.signIn.email({
-        email: email.trim(),
-        password,
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/auth/student/sign-in`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+        credentials: "include",
       });
 
-      if (authError) {
-        setError(authError.message || "Failed to sign in. Please check your credentials.");
+      const resData = await res.json();
+
+      if (!res.ok) {
+        setError(resData.message || "Failed to sign in. Please check your credentials.");
         return;
       }
 
-      if (data?.user) {
-        const user = data.user as any;
+      if (resData?.user) {
+        const user = resData.user as any;
         let portalRole: PortalRole = "restricted";
         if (user.role === "APPLICANT") {
           portalRole = "applicant";
