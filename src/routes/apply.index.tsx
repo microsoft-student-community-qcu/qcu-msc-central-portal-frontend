@@ -9,6 +9,9 @@ import {
   Compass,
   Orbit,
   Sparkles,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
@@ -31,9 +34,6 @@ const IdUploadScanner = lazy(() =>
     default: m.IdUploadScanner,
   })),
 );
-
-
-
 
 export const Route = createFileRoute("/apply/")({
   head: () => ({
@@ -82,25 +82,41 @@ type FormState = {
 };
 
 const INITIAL: FormState = {
-  fullName: "", college: "", program: "", section: "", campus: "",
-  studentId: "", dateOfBirth: "", placeOfBirth: "", gender: "", role: "",
-  certificateOfRegistration: "", curriculumVitae: "",
-  houseAddress: "", cellphone: "", email: "", facebookLink: "",
-  interests: "", pastOrganizations: "",
-  portfolio: "", githubOrProjects: "", previousWorks: "",
+  fullName: "",
+  college: "",
+  program: "",
+  section: "",
+  campus: "",
+  studentId: "",
+  dateOfBirth: "",
+  placeOfBirth: "",
+  gender: "",
+  role: "",
+  certificateOfRegistration: "",
+  curriculumVitae: "",
+  houseAddress: "",
+  cellphone: "",
+  email: "",
+  facebookLink: "",
+  interests: "",
+  pastOrganizations: "",
+  portfolio: "",
+  githubOrProjects: "",
+  previousWorks: "",
 };
 
 type FieldKind = "text" | "email" | "tel" | "date" | "textarea" | "select" | "file";
 
 type Question = {
   key: keyof FormState;
-  chapter: string;       // "Chapter 1 · The basics"
-  greeting?: string;     // Optional warm intro line that appears above the prompt
-  prompt: string;        // The actual question
-  helper?: string;       // Small helper hint under the input
+  chapter: string; // "Chapter 1 · The basics"
+  greeting?: string; // Optional warm intro line that appears above the prompt
+  prompt: string; // The actual question
+  helper?: string; // Small helper hint under the input
   placeholder?: string;
   kind: FieldKind;
-  options?: string[];    // For select
+  options?: string[]; // For select
+  optionsFor?: (form: FormState) => string[]; // For select options dependent on another field's value
   optional?: boolean;
   validate?: (value: string) => string | null;
 };
@@ -137,7 +153,46 @@ const validGitHubOrDriveUrl = (v: string) => {
     return "Must be a valid URL (e.g., https://...)";
   }
 };
-const requiredUrl = (v: string) => required(v) || validUrl(v);
+const validFacebookUrl = (v: string) => {
+  if (!v.trim()) return "This one's required to continue.";
+  try {
+    const url = new URL(v.trim());
+    if (!url.hostname.includes("facebook.com") && !url.hostname.includes("fb.com")) {
+      return "Must be a valid Facebook profile link (e.g., https://facebook.com/your.profile).";
+    }
+    return null;
+  } catch {
+    return "Must be a valid URL (e.g., https://facebook.com/your.profile)";
+  }
+};
+// Latest selectable Date of Birth: no dates after 2008 (native date picker "max"
+// caps calendar navigation; this validate fn is a safety net for typed/pasted values).
+const MAX_DATE_OF_BIRTH = "2008-12-31";
+const validDateOfBirth = (v: string) => {
+  if (!v.trim()) return "This one's required to continue.";
+  if (v > MAX_DATE_OF_BIRTH) return "You must be born on or before December 31, 2008 to apply.";
+  return null;
+};
+
+// PLACEHOLDER — replace with the official QCU list of colleges & programs.
+// Program dropdown filters to this list based on the selected College.
+const COLLEGE_PROGRAMS: Record<string, string[]> = {
+  "College of Business Administration and Accountancy": [
+    "Bachelor of Science in Accountancy (BSA)",
+    "Bachelor of Science in Entrepreneurship (BS Entrep)",
+  ],
+  "College of Computer Studies": [
+    "Bachelor of Science in Computer Science (CS)",
+    "Bachelor of Science in Information Technology (BSIT)",
+    "Bachelor of Science in Information Systems (BSIS)",
+  ],
+  "College of Engineering": [
+    "Bachelor of Science in Industrial Engineering (IE) ",
+    "Bachelor of Science in Electronics Engineering (BSECE)",
+  ],
+  "College of Education": ["Bachelor of Early Childhood Education (BECEd)"],
+};
+const COLLEGE_OPTIONS = Object.keys(COLLEGE_PROGRAMS);
 
 const QUESTIONS: Question[] = [
   // Chapter 1 — Getting to know you
@@ -157,7 +212,7 @@ const QUESTIONS: Question[] = [
     prompt: "When's your birthday?",
     helper: "We promise — no surprise cakes (unless you want one).",
     kind: "date",
-    validate: required,
+    validate: validDateOfBirth,
   },
   {
     key: "placeOfBirth",
@@ -183,16 +238,16 @@ const QUESTIONS: Question[] = [
     chapter: "Chapter 2 · Your academic life",
     greeting: "Awesome. Let's talk school for a sec.",
     prompt: "Which college are you in?",
-    placeholder: "College of Computer Studies",
-    kind: "text",
+    kind: "select",
+    options: COLLEGE_OPTIONS,
     validate: required,
   },
   {
     key: "program",
     chapter: "Chapter 2 · Your academic life",
     prompt: "What program are you taking?",
-    placeholder: "BS Information Technology",
-    kind: "text",
+    kind: "select",
+    optionsFor: (form) => COLLEGE_PROGRAMS[form.college] ?? [],
     validate: required,
   },
   {
@@ -212,7 +267,6 @@ const QUESTIONS: Question[] = [
     validate: required,
   },
   // studentId is captured via Zonal OCR before the form starts.
-
 
   // Chapter 3 — Your role with us
   {
@@ -287,7 +341,7 @@ const QUESTIONS: Question[] = [
     prompt: "What's your Facebook profile link?",
     placeholder: "https://facebook.com/your.profile",
     kind: "text",
-    validate: requiredUrl,
+    validate: validFacebookUrl,
   },
 
   // Chapter 6 — A little more about you
@@ -345,7 +399,9 @@ const QUESTIONS: Question[] = [
 function ApplyPage() {
   const navigate = useNavigate();
   const [clientReady, setClientReady] = useState(false);
-  const [redirectingToAccount, setRedirectingToAccount] = useState(() => hasActiveAccountRedirect());
+  const [redirectingToAccount, setRedirectingToAccount] = useState(() =>
+    hasActiveAccountRedirect(),
+  );
   const [stage, setStage] = useState<"scan" | "confirm" | "form">("scan");
   const [provisionalIdFile, setProvisionalIdFile] = useState<File | null>(null);
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
@@ -378,7 +434,7 @@ function ApplyPage() {
       void navigate({
         to: "/apply/account",
         search: { token: undefined },
-        replace: true
+        replace: true,
       }).catch(() => {
         setRedirectingToAccount(false);
       });
@@ -397,7 +453,7 @@ function ApplyPage() {
     try {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
-      
+
       const API_URL = import.meta.env.VITE_API_URL;
       if (!API_URL) {
         throw new Error("VITE_API_URL environment variable is required");
@@ -410,32 +466,34 @@ function ApplyPage() {
           void navigate({
             to: "/apply/account",
             search: { token: json.data.setupToken },
-            replace: true
+            replace: true,
           });
           return;
         }
 
         setOcrSessionId(json.data.ocrSessionId);
         setManualRequired(json.data.manualRequired);
-        
+
         // Pre-fill
         setConfirmStudentId(json.data.studentId || "");
-        
+
         const lastName = json.data.lastName || "";
         const firstName = json.data.firstName || "";
         const middleInitial = json.data.middleInitial || "";
-        
+
         setConfirmLastName(lastName);
         setConfirmFirstName(firstName);
         setConfirmMiddleInitial(middleInitial);
         setDigitCorrectedInName(!!json.data.digitCorrectedInName);
-        
+
         let cleanMI = middleInitial.trim().replace(/\.+$/, "");
         if (cleanMI) {
           cleanMI = cleanMI + ".";
         }
-        const formattedName = `${lastName}, ${firstName}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
-        setForm(f => ({ ...f, fullName: formattedName }));
+        const formattedName = `${lastName}, ${firstName}${cleanMI ? " " + cleanMI : ""}`
+          .trim()
+          .replace(/\s+/g, " ");
+        setForm((f) => ({ ...f, fullName: formattedName }));
       } else {
         if (json.data && json.data.manualRequired) {
           setOcrSessionId(json.data.ocrSessionId);
@@ -454,7 +512,7 @@ function ApplyPage() {
       setOcrError(
         err instanceof Error
           ? err.message
-          : "We couldn't read your ID automatically. You can type the details in."
+          : "We couldn't read your ID automatically. You can type the details in.",
       );
       setManualRequired(true); // Fallback to manual if API is down
     } finally {
@@ -482,7 +540,10 @@ function ApplyPage() {
     if (cleanMI) {
       cleanMI = cleanMI + ".";
     }
-    const formattedName = `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
+    const formattedName =
+      `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`
+        .trim()
+        .replace(/\s+/g, " ");
     setForm((f) => ({
       ...f,
       studentId: confirmStudentId.trim(),
@@ -494,32 +555,39 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-
-
   const total = flowQuestions.length;
   const onReview = false;
   const q = flowQuestions[Math.min(idx, total - 1)];
   const progress = useMemo(
-    () => (submitted ? 100 : Math.round(((idx) / total) * 100)),
+    () => (submitted ? 100 : Math.round((idx / total) * 100)),
     [idx, total, submitted],
   );
 
   useEffect(() => {
-    if (q && (q.kind === "text" || q.kind === "email" || q.kind === "tel" || q.kind === "textarea")) {
+    if (
+      q &&
+      (q.kind === "text" || q.kind === "email" || q.kind === "tel" || q.kind === "textarea")
+    ) {
       inputRef.current?.focus();
     }
   }, [idx, q]);
 
   const update = (key: keyof FormState, value: string, file?: File) => {
-    setForm((f) => ({ ...f, [key]: value }));
-    if (file) setFiles(prev => ({ ...prev, [key]: file }));
+    setForm((f) => {
+      const next = { ...f, [key]: value };
+      if (key === "college" && f.college !== value) {
+        next.program = "";
+      }
+      return next;
+    });
+    if (file) setFiles((prev) => ({ ...prev, [key]: file }));
     setError(null);
   };
 
   const goNext = () => {
     if (!q) return;
     const v = String(form[q.key] ?? "");
-    
+
     if (q.optional && !v.trim()) {
       // Optional and empty is fine
     } else if (q.validate) {
@@ -544,28 +612,16 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const skip = () => {
-    if (q?.optional) {
-      update(q.key, "");
-      if (idx === total - 1) {
-        submit();
-      } else {
-        setIdx((i) => Math.min(total - 1, i + 1));
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    }
-  };
-
   const submit = async () => {
     setError(null);
     try {
       const fd = new FormData();
-      
+
       let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
       if (cleanMI) {
         cleanMI = cleanMI + ".";
       }
-      
+
       fd.append("firstName", confirmFirstName.trim());
       fd.append("lastName", confirmLastName.trim());
       if (cleanMI) {
@@ -575,22 +631,22 @@ function ApplyPage() {
       fd.append("college", form.college);
       fd.append("program", form.program);
       fd.append("section", form.section);
-      
+
       let backendCampus = "SAN_BARTOLOME_MAIN";
       if (form.campus.toUpperCase().includes("SAN FRANCISCO")) backendCampus = "SAN_FRANCISCO";
       if (form.campus.toUpperCase().includes("BATASAN")) backendCampus = "BATASAN";
       fd.append("campus", backendCampus);
-      
+
       if (form.dateOfBirth) fd.append("dateOfBirth", form.dateOfBirth);
       fd.append("placeOfBirth", form.placeOfBirth);
-      
+
       let backendGender = "PREFER_NOT_TO_SAY";
       const g = form.gender.toUpperCase();
       if (g.includes("MALE") && !g.includes("FEMALE")) backendGender = "MALE";
       else if (g.includes("FEMALE")) backendGender = "FEMALE";
       else if (g.includes("LGBTQ")) backendGender = "LGBTQIA";
       fd.append("gender", backendGender);
-      
+
       fd.append("membershipRole", form.role);
       fd.append("houseAddress", form.houseAddress);
       fd.append("cellphoneNumber", form.cellphone);
@@ -598,16 +654,22 @@ function ApplyPage() {
       fd.append("facebookLink", form.facebookLink);
       fd.append("interestsSkillsHobbies", form.interests);
       fd.append("organizationHistory", form.pastOrganizations || "N/A");
-      
+
       if (form.portfolio) fd.append("portfolio", form.portfolio);
       if (form.githubOrProjects) fd.append("githubOrProjectLinks", form.githubOrProjects);
       if (form.previousWorks) fd.append("previousWorksAchievements", form.previousWorks);
-      
+
       if (ocrSessionId) fd.append("ocrSessionId", ocrSessionId);
       if (manualRequired) fd.append("studentId", form.studentId);
-      
-      if (!files.certificateOfRegistration) throw new Error(`Please re-select your Certificate of Registration file. Debug memory: ${Object.keys(files).join(", ") || "none"}`);
-      if (!files.curriculumVitae) throw new Error(`Please re-select your Curriculum Vitae file. Debug memory: ${Object.keys(files).join(", ") || "none"}`);
+
+      if (!files.certificateOfRegistration)
+        throw new Error(
+          `Please re-select your Certificate of Registration file. Debug memory: ${Object.keys(files).join(", ") || "none"}`,
+        );
+      if (!files.curriculumVitae)
+        throw new Error(
+          `Please re-select your Curriculum Vitae file. Debug memory: ${Object.keys(files).join(", ") || "none"}`,
+        );
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
@@ -617,10 +679,10 @@ function ApplyPage() {
       }
       const res = await fetch(`${API_URL}/applicants`, {
         method: "POST",
-        body: fd
+        body: fd,
       });
       const json = await res.json();
-      
+
       if (!res.ok || !json.success) {
         let errorMsg = json.message || "Submission failed.";
         if (json.errors) {
@@ -657,7 +719,7 @@ function ApplyPage() {
       void navigate({
         to: "/apply/account",
         search: { token: json.data.setupToken },
-        replace: true
+        replace: true,
       }).catch(() => {
         setRedirectingToAccount(false);
       });
@@ -667,7 +729,6 @@ function ApplyPage() {
       setSubmitted(false);
     }
   };
-
 
   const reset = () => {
     setForm(INITIAL);
@@ -686,7 +747,6 @@ function ApplyPage() {
     setStage("scan");
   };
 
-
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && q && q.kind !== "textarea") {
       e.preventDefault();
@@ -695,8 +755,7 @@ function ApplyPage() {
   };
 
   // Chapter intro: show greeting only on the first question of a chapter
-  const isChapterStart =
-    q !== null && (idx === 0 || flowQuestions[idx - 1].chapter !== q.chapter);
+  const isChapterStart = q !== null && (idx === 0 || flowQuestions[idx - 1].chapter !== q.chapter);
 
   if (!clientReady) {
     return <ApplyBootScreen />;
@@ -707,7 +766,10 @@ function ApplyPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <PlanetsField />
 
@@ -738,7 +800,13 @@ function ApplyPage() {
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
             <MissionPanel
               eyebrow="Pre-flight check"
-              title={<>Verify your<br/><span className="text-brand-orange">student orbit</span></>}
+              title={
+                <>
+                  Verify your
+                  <br />
+                  <span className="text-brand-orange">student orbit</span>
+                </>
+              }
               subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet."
               stats={[
                 { label: "Step", value: "00" },
@@ -748,10 +816,15 @@ function ApplyPage() {
             />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
-                <Suspense fallback={<div className="grid h-72 place-items-center text-sm text-white/70">Preparing on-device scanner…</div>}>
+                <Suspense
+                  fallback={
+                    <div className="grid h-72 place-items-center text-sm text-white/70">
+                      Preparing on-device scanner…
+                    </div>
+                  }
+                >
                   <IdUploadScanner onSubmit={handleScanComplete} />
                 </Suspense>
-
               </div>
             </div>
           </div>
@@ -759,7 +832,13 @@ function ApplyPage() {
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
             <MissionPanel
               eyebrow="Confirm identity"
-              title={<>Double-check your<br/><span className="text-brand-orange">ID details</span></>}
+              title={
+                <>
+                  Double-check your
+                  <br />
+                  <span className="text-brand-orange">ID details</span>
+                </>
+              }
               subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email."
               stats={[
                 { label: "Step", value: "01" },
@@ -801,9 +880,17 @@ function ApplyPage() {
               eyebrow={onReview ? "Final review" : q!.chapter}
               title={
                 onReview ? (
-                  <>One last<br/><span className="text-brand-orange">orbital check</span></>
+                  <>
+                    One last
+                    <br />
+                    <span className="text-brand-orange">orbital check</span>
+                  </>
                 ) : (
-                  <>Travel the<br/><span className="text-brand-orange">QCU MSC</span></>
+                  <>
+                    Travel the
+                    <br />
+                    <span className="text-brand-orange">QCU MSC</span>
+                  </>
                 )
               }
               subtitle={
@@ -812,7 +899,10 @@ function ApplyPage() {
                   : "One quick question at a time. We're charting your route across the constellation — no pressure."
               }
               stats={[
-                { label: "Question", value: onReview ? `${total}/${total}` : `${idx + 1}/${total}` },
+                {
+                  label: "Question",
+                  value: onReview ? `${total}/${total}` : `${idx + 1}/${total}`,
+                },
                 { label: "Progress", value: `${progress}%` },
                 { label: "Heading", value: onReview ? "Review" : "Forward" },
               ]}
@@ -824,96 +914,97 @@ function ApplyPage() {
                 key={idx}
                 className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-10 animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
-              {onReview ? (
-                <ReviewStep form={form} onEdit={(key) => {
-                  const i = flowQuestions.findIndex((x) => x.key === key);
-                  if (i >= 0) setIdx(i);
-                }} />
-              ) : (
-                <div className="space-y-6" onKeyDown={onKeyDown}>
-                  {isChapterStart && q!.greeting && (
-                    <p className="font-body text-sm italic text-brand-blue-deep/70">
-                      {q!.greeting}
-                    </p>
-                  )}
-                  <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
-                    {q!.prompt}
-                    {q!.optional && (
-                      <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-[0.18em] text-brand-blue-deep/50">
-                        optional
-                      </span>
-                    )}
-                  </h2>
-
-                  <QuestionInput
-                    q={q!}
-                    value={String(form[q!.key] ?? "")}
-                    onChange={(v, f) => update(q!.key, v, f)}
-                    inputRef={inputRef}
+                {onReview ? (
+                  <ReviewStep
+                    form={form}
+                    onEdit={(key) => {
+                      const i = flowQuestions.findIndex((x) => x.key === key);
+                      if (i >= 0) setIdx(i);
+                    }}
                   />
-
-                  {q!.helper && !error && (
-                    <p className="text-xs text-brand-blue-deep/60">{q!.helper}</p>
-                  )}
-                  {error && (
-                    <p className="text-xs font-medium text-red-600">{error}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Nav */}
-              <div className="mt-8 flex items-center justify-between gap-3 border-t border-white/60 pt-6">
-                {idx > 0 ? (
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white"
-                  >
-                    <ArrowLeft className="size-4" /> Back to Space
-                  </button>
                 ) : (
-                  <span />
+                  <div className="space-y-6" onKeyDown={onKeyDown}>
+                    {isChapterStart && q!.greeting && (
+                      <p className="font-body text-sm italic text-brand-blue-deep/70">
+                        {q!.greeting}
+                      </p>
+                    )}
+                    <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
+                      {q!.prompt}
+                      {q!.optional && (
+                        <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-[0.18em] text-brand-blue-deep/50">
+                          optional
+                        </span>
+                      )}
+                    </h2>
+
+                    <QuestionInput
+                      q={q!}
+                      value={String(form[q!.key] ?? "")}
+                      onChange={(v, f) => update(q!.key, v, f)}
+                      inputRef={inputRef}
+                      form={form}
+                    />
+
+                    {q!.helper && !error && (
+                      <p className="text-xs text-brand-blue-deep/60">{q!.helper}</p>
+                    )}
+                    {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+                  </div>
                 )}
-                <div className="flex items-center gap-2">
-                  {q?.optional && (
+
+                {/* Nav */}
+                <div className="mt-8 flex items-center justify-between gap-3 border-t border-white/60 pt-6">
+                  {idx > 0 ? (
                     <button
                       type="button"
-                      onClick={skip}
-                      className="rounded-full px-4 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep/70 hover:text-brand-blue-deep"
+                      onClick={goBack}
+                      className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white"
                     >
-                      Skip
-                    </button>
-                  )}
-                  {onReview ? (
-                    <button
-                      type="button"
-                      onClick={submit}
-                      className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
-                      style={{ background: "var(--gradient-cta)" }}
-                    >
-                      Submit Application <Rocket className="size-4" />
+                      <ArrowLeft className="size-4" /> Back to Space
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={goNext}
-                      className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
-                      style={{ background: "var(--gradient-cta)" }}
-                    >
-                      {idx === total - 1 ? (
-                        <>Submit Application <Rocket className="size-4" /></>
-                      ) : (
-                        <>Continue <ArrowRight className="size-4" /></>
-                      )}
-                    </button>
+                    <span />
                   )}
+                  <div className="flex items-center gap-2">
+                    {onReview ? (
+                      <button
+                        type="button"
+                        onClick={submit}
+                        className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                        style={{ background: "var(--gradient-cta)" }}
+                      >
+                        Submit Application <Rocket className="size-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={goNext}
+                        className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                        style={{ background: "var(--gradient-cta)" }}
+                      >
+                        {idx === total - 1 ? (
+                          <>
+                            Submit Application <Rocket className="size-4" />
+                          </>
+                        ) : (
+                          <>
+                            Continue <ArrowRight className="size-4" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
               </div>
 
               {!onReview && (
                 <p className="mt-4 hidden text-[11px] text-white/75 drop-shadow [@media(hover:hover)]:block">
-                  Press <kbd className="rounded bg-white/30 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd> to continue
+                  Press{" "}
+                  <kbd className="rounded bg-white/30 px-1.5 py-0.5 font-mono text-[10px]">
+                    Enter
+                  </kbd>{" "}
+                  to continue
                 </p>
               )}
             </div>
@@ -926,7 +1017,10 @@ function ApplyPage() {
 
 function ApplyBootScreen() {
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <PlanetsField />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 text-center">
@@ -948,7 +1042,10 @@ function ApplyBootScreen() {
 
 function AccountRedirectScreen() {
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <PlanetsField />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 text-center">
@@ -975,17 +1072,21 @@ function QuestionInput({
   value,
   onChange,
   inputRef,
+  form,
 }: {
   q: Question;
   value: string;
   onChange: (v: string, file?: File) => void;
   inputRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  form: FormState;
 }) {
   const base = "bg-white/85 text-base";
   if (q.kind === "textarea") {
     return (
       <Textarea
-        ref={(el) => { inputRef.current = el; }}
+        ref={(el) => {
+          inputRef.current = el;
+        }}
         rows={4}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -995,13 +1096,16 @@ function QuestionInput({
     );
   }
   if (q.kind === "select") {
+    const selectOptions = q.optionsFor ? q.optionsFor(form) : (q.options ?? []);
     return (
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-14 w-full whitespace-normal bg-white/85 px-4 text-left text-base [&>span]:line-clamp-2 [&>span]:text-left">
-          <SelectValue placeholder="Choose one…" />
+          <SelectValue
+            placeholder={selectOptions.length ? "Choose one…" : "Select your college first"}
+          />
         </SelectTrigger>
         <SelectContent className="max-w-[calc(100vw-2rem)]">
-          {q.options?.map((o) => (
+          {selectOptions.map((o) => (
             <SelectItem key={o} value={o} className="py-3 text-base">
               {o}
             </SelectItem>
@@ -1015,7 +1119,9 @@ function QuestionInput({
       <label className="grid min-h-14 w-full max-w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-md border border-input bg-white/85 px-3 py-3 text-sm shadow-sm transition hover:bg-white sm:px-4">
         <span className="flex min-w-0 items-center gap-2 text-brand-blue-deep">
           <Upload className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{value || "Choose a file (PDF, DOCX, JPG, PNG)"}</span>
+          <span className="min-w-0 flex-1 truncate">
+            {value || "Choose a file (PDF, DOCX, JPG, PNG)"}
+          </span>
         </span>
         <span className="shrink-0 rounded-full bg-brand-blue-deep px-3 py-1.5 text-[11px] font-semibold text-white">
           Browse
@@ -1033,9 +1139,15 @@ function QuestionInput({
     );
   }
 
+  if (q.kind === "date") {
+    return <BirthdayCalendarPicker value={value} onChange={onChange} max={MAX_DATE_OF_BIRTH} />;
+  }
+
   return (
     <Input
-      ref={(el) => { inputRef.current = el; }}
+      ref={(el) => {
+        inputRef.current = el;
+      }}
       type={q.kind}
       value={value}
       onChange={(e) => {
@@ -1046,6 +1158,225 @@ function QuestionInput({
       className={`h-12 ${base}`}
       maxLength={q.kind === "tel" ? 11 : undefined}
     />
+  );
+}
+
+/* ---------- Birthday calendar picker ---------- */
+
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+const WEEKDAY_LABELS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const toISO = (y: number, m: number, d: number) => `${y}-${pad2(m + 1)}-${pad2(d)}`;
+const parseISO = (v: string): { y: number; m: number; d: number } | null => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  if (!match) return null;
+  return { y: Number(match[1]), m: Number(match[2]) - 1, d: Number(match[3]) };
+};
+const formatDisplay = (v: string) => {
+  const parsed = parseISO(v);
+  if (!parsed) return null;
+  return `${MONTH_NAMES[parsed.m]} ${parsed.d}, ${parsed.y}`;
+};
+
+function BirthdayCalendarPicker({
+  value,
+  onChange,
+  max,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  max: string; // "YYYY-MM-DD"
+}) {
+  const maxParsed = parseISO(max)!;
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(() => parseISO(value)?.y ?? maxParsed.y);
+  const [viewMonth, setViewMonth] = useState(() => parseISO(value)?.m ?? maxParsed.m);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const parsed = parseISO(value);
+    setViewYear(parsed?.y ?? maxParsed.y);
+    setViewMonth(parsed?.m ?? maxParsed.m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const atMaxMonth = viewYear === maxParsed.y && viewMonth === maxParsed.m;
+  const yearOptions = useMemo(
+    () => Array.from({ length: 61 }, (_, i) => maxParsed.y - i),
+    [maxParsed.y],
+  );
+
+  const cells = useMemo(() => {
+    const firstWeekday = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const out: (number | null)[] = [];
+    for (let i = 0; i < firstWeekday; i++) out.push(null);
+    for (let d = 1; d <= daysInMonth; d++) out.push(d);
+    while (out.length % 7 !== 0) out.push(null);
+    return out;
+  }, [viewYear, viewMonth]);
+
+  const goPrevMonth = () => {
+    setViewMonth((m) => {
+      if (m === 0) {
+        setViewYear((y) => y - 1);
+        return 11;
+      }
+      return m - 1;
+    });
+  };
+  const goNextMonth = () => {
+    if (atMaxMonth) return;
+    setViewMonth((m) => {
+      if (m === 11) {
+        setViewYear((y) => y + 1);
+        return 0;
+      }
+      return m + 1;
+    });
+  };
+
+  const display = formatDisplay(value);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-12 w-full items-center justify-between rounded-md border border-input bg-white/85 px-3.5 text-left text-base shadow-sm transition hover:bg-white"
+      >
+        <span className={display ? "text-brand-blue-deep" : "text-brand-blue-deep/40"}>
+          {display ?? "Select your birthday"}
+        </span>
+        <CalendarIcon className="size-4 shrink-0 text-brand-blue-deep/60" />
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+8px)] z-50 w-[300px] max-w-[calc(100vw-2rem)] rounded-2xl border border-brand-blue-deep/10 bg-white p-4 shadow-2xl">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={goPrevMonth}
+              className="grid size-8 shrink-0 place-items-center rounded-full text-brand-blue-deep/70 hover:bg-brand-blue-deep/10"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5">
+              <select
+                value={viewMonth}
+                onChange={(e) => setViewMonth(Number(e.target.value))}
+                className="min-w-0 rounded-md border border-input bg-white px-1.5 py-1 text-sm font-semibold text-brand-blue-deep"
+              >
+                {MONTH_NAMES.map((name, i) => (
+                  <option
+                    key={name}
+                    value={i}
+                    disabled={viewYear === maxParsed.y && i > maxParsed.m}
+                  >
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={viewYear}
+                onChange={(e) => {
+                  const y = Number(e.target.value);
+                  setViewYear(y);
+                  if (y === maxParsed.y && viewMonth > maxParsed.m) setViewMonth(maxParsed.m);
+                }}
+                className="min-w-0 rounded-md border border-input bg-white px-1.5 py-1 text-sm font-semibold text-brand-blue-deep"
+              >
+                {yearOptions.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={goNextMonth}
+              disabled={atMaxMonth}
+              className="grid size-8 shrink-0 place-items-center rounded-full text-brand-blue-deep/70 hover:bg-brand-blue-deep/10 disabled:opacity-25 disabled:hover:bg-transparent"
+              aria-label="Next month"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-y-1 text-center">
+            {WEEKDAY_LABELS.map((wd) => (
+              <div
+                key={wd}
+                className="text-[10px] font-bold uppercase tracking-wide text-brand-blue-deep/40"
+              >
+                {wd}
+              </div>
+            ))}
+            {cells.map((day, i) => {
+              if (day === null) return <div key={`blank-${i}`} className="size-9" />;
+              const iso = toISO(viewYear, viewMonth, day);
+              const isSelected = iso === value;
+              const isDisabled = iso > max;
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={() => {
+                    onChange(iso);
+                    setOpen(false);
+                  }}
+                  className={`mx-auto grid size-9 place-items-center rounded-full text-sm font-medium transition ${
+                    isSelected
+                      ? "bg-brand-blue-deep text-white"
+                      : isDisabled
+                        ? "cursor-not-allowed text-brand-blue-deep/20"
+                        : "text-brand-blue-deep hover:bg-brand-blue-deep/10"
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1095,8 +1426,7 @@ function ConfirmIdStep({
           Confirm your ID details
         </h3>
         <p className="mt-1 font-body text-sm text-brand-blue-deep/70">
-          We read your captured ID. Review the auto-filled fields and add your
-          QCU email.
+          We read your captured ID. Review the auto-filled fields and add your QCU email.
         </p>
       </div>
 
@@ -1113,7 +1443,10 @@ function ConfirmIdStep({
       <div className="grid gap-4">
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-            Student Number {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            Student Number{" "}
+            {loading && (
+              <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+            )}
           </div>
           <Input
             value={studentId}
@@ -1127,7 +1460,10 @@ function ConfirmIdStep({
         <div className="grid grid-cols-[1fr_1fr_0.4fr] gap-3">
           <label className="block">
             <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-              Last Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+              Last Name{" "}
+              {loading && (
+                <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+              )}
             </div>
             <Input
               value={lastName}
@@ -1140,7 +1476,10 @@ function ConfirmIdStep({
 
           <label className="block">
             <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-              First Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+              First Name{" "}
+              {loading && (
+                <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+              )}
             </div>
             <Input
               value={firstName}
@@ -1152,8 +1491,11 @@ function ConfirmIdStep({
           </label>
 
           <label className="block">
-            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-              M.I. {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            <div className="mb-1.5 whitespace-nowrap font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
+              M.I.{" "}
+              {loading && (
+                <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+              )}
             </div>
             <Input
               value={middleInitial}
@@ -1161,14 +1503,15 @@ function ConfirmIdStep({
               placeholder={loading ? "…" : "S"}
               disabled={loading}
               maxLength={2}
-              className="h-12 bg-white/85 text-base text-center"
+              className="h-12 w-full min-w-[3.5rem] bg-white/85 text-base text-center"
             />
           </label>
         </div>
 
         {digitCorrected && (
           <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-500/90 font-medium">
-            Suspected numbers in name fields were automatically corrected. Please verify they are correct.
+            Suspected numbers in name fields were automatically corrected. Please verify they are
+            correct.
           </div>
         )}
 
@@ -1186,9 +1529,7 @@ function ConfirmIdStep({
         </label>
       </div>
 
-      {error && (
-        <p className="text-xs font-medium text-red-600">{error}</p>
-      )}
+      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/60 pt-5">
         <button
@@ -1214,13 +1555,7 @@ function ConfirmIdStep({
 
 /* ---------- Review ---------- */
 
-function ReviewStep({
-  form,
-  onEdit,
-}: {
-  form: FormState;
-  onEdit: (key: keyof FormState) => void;
-}) {
+function ReviewStep({ form, onEdit }: { form: FormState; onEdit: (key: keyof FormState) => void }) {
   // Group by chapter, in original order
   const chapters = useMemo(() => {
     const map = new Map<string, Question[]>();
@@ -1265,18 +1600,24 @@ function ReviewStep({
                     </div>
                     <div
                       className="mt-0.5 overflow-hidden text-sm text-brand-blue-deep"
-                      style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", wordBreak: "break-word" }}
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        wordBreak: "break-word",
+                      }}
                       title={v || undefined}
                     >
                       {display || <span className="text-brand-blue-deep/40">—</span>}
                     </div>
                   </div>
-                  <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-brand-orange">Edit</span>
+                  <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-brand-orange">
+                    Edit
+                  </span>
                 </button>
               );
             })}
           </div>
-
         </div>
       ))}
     </div>
@@ -1289,14 +1630,18 @@ function SuccessCard({ onReset }: { onReset: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="mt-10 rounded-3xl glass-strong p-8 text-center sm:p-12">
-      <div className="mx-auto grid size-20 place-items-center rounded-full" style={{ background: "var(--gradient-cta)" }}>
+      <div
+        className="mx-auto grid size-20 place-items-center rounded-full"
+        style={{ background: "var(--gradient-cta)" }}
+      >
         <CheckCircle2 className="size-10 text-white" />
       </div>
       <h2 className="mt-6 font-display text-3xl font-extrabold text-brand-blue-deep sm:text-4xl">
         Launch successful!
       </h2>
       <p className="mx-auto mt-3 max-w-md font-body text-brand-blue-deep/75">
-        Your application is now orbiting Mission Control. Sit tight — our team will beam back a message through your QCU email soon.
+        Your application is now orbiting Mission Control. Sit tight — our team will beam back a
+        message through your QCU email soon.
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <button
@@ -1343,9 +1688,7 @@ function MissionPanel({
         {title}
       </h1>
 
-      <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">
-        {subtitle}
-      </p>
+      <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">{subtitle}</p>
 
       {/* Destination planet illustration */}
       <div className="relative mt-10 hidden h-64 lg:block">
@@ -1413,17 +1756,21 @@ function DestinationPlanet() {
         <span className="absolute left-[55%] top-[60%] size-2 rounded-full bg-black/20" />
         <span className="absolute left-[65%] top-[25%] size-1.5 rounded-full bg-black/15" />
       </div>
-
-      
     </div>
   );
 }
 
 function PlanetsField() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] hidden overflow-hidden sm:block">
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-[1] hidden overflow-hidden sm:block"
+    >
       {/* Blue moon, top-right */}
-      <div className="absolute right-[6%] top-[14%] size-24 animate-planet-bob" style={{ animationDelay: "0s" }}>
+      <div
+        className="absolute right-[6%] top-[14%] size-24 animate-planet-bob"
+        style={{ animationDelay: "0s" }}
+      >
         <div
           className="size-full rounded-full opacity-90 shadow-[0_0_40px_rgba(80,160,255,0.35)]"
           style={{
@@ -1434,7 +1781,10 @@ function PlanetsField() {
       </div>
 
       {/* Tiny ringed planet, mid-left */}
-      <div className="absolute left-[4%] top-[55%] size-16 animate-planet-bob" style={{ animationDelay: "1.5s" }}>
+      <div
+        className="absolute left-[4%] top-[55%] size-16 animate-planet-bob"
+        style={{ animationDelay: "1.5s" }}
+      >
         <div
           className="size-full rounded-full"
           style={{
@@ -1444,12 +1794,17 @@ function PlanetsField() {
         />
         <div
           className="absolute left-1/2 top-1/2 h-1.5 w-24 -translate-x-1/2 -translate-y-1/2 rotate-[-22deg] rounded-full opacity-70"
-          style={{ background: "linear-gradient(90deg, transparent, rgba(255,200,140,0.85), transparent)" }}
+          style={{
+            background: "linear-gradient(90deg, transparent, rgba(255,200,140,0.85), transparent)",
+          }}
         />
       </div>
 
       {/* Small purple planet bottom-right */}
-      <div className="absolute bottom-[12%] right-[16%] size-12 animate-planet-bob" style={{ animationDelay: "2.5s" }}>
+      <div
+        className="absolute bottom-[12%] right-[16%] size-12 animate-planet-bob"
+        style={{ animationDelay: "2.5s" }}
+      >
         <div
           className="size-full rounded-full opacity-90"
           style={{
@@ -1460,7 +1815,10 @@ function PlanetsField() {
       </div>
 
       {/* Dot planet top-left */}
-      <div className="absolute left-[18%] top-[8%] size-8 animate-planet-bob" style={{ animationDelay: "3.2s" }}>
+      <div
+        className="absolute left-[18%] top-[8%] size-8 animate-planet-bob"
+        style={{ animationDelay: "3.2s" }}
+      >
         <div
           className="size-full rounded-full opacity-80"
           style={{
@@ -1476,10 +1834,17 @@ function PlanetsField() {
         viewBox="0 0 400 400"
         fill="none"
       >
-        <ellipse cx="200" cy="200" rx="180" ry="120" stroke="white" strokeDasharray="4 8" strokeWidth="1" transform="rotate(-18 200 200)" />
+        <ellipse
+          cx="200"
+          cy="200"
+          rx="180"
+          ry="120"
+          stroke="white"
+          strokeDasharray="4 8"
+          strokeWidth="1"
+          transform="rotate(-18 200 200)"
+        />
       </svg>
-
-      
     </div>
   );
 }
