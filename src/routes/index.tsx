@@ -99,7 +99,7 @@ const PARTNERS: Partner[] = [
   { name: "BITS", logo: bitsLogo },
   { name: "MSC PUP", logo: mscPupLogo },
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
-  { name: "Datacamp Donates", logo: datacampDonates },
+  { name: "DataCamp Donates", logo: datacampDonates },
 ];
 
 function Landing() {
