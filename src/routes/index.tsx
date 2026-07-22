@@ -25,6 +25,7 @@ import azureCommunityLogo from "../assets/images/partners/microsoft-azure-commun
 import bitsLogo from "../assets/images/partners/bits.svg";
 import mscPupLogo from "../assets/images/partners/msc-pup.svg";
 import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
+import datacampDonates from "../assets/images/partners/datacamp-donates.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -98,6 +99,7 @@ const PARTNERS: Partner[] = [
   { name: "BITS", logo: bitsLogo },
   { name: "MSC PUP", logo: mscPupLogo },
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
+  { name: "Datacamp Donates", logo: datacampDonates },
 ];
 
 function Landing() {
