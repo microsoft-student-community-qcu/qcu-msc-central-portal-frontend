@@ -147,7 +147,7 @@ const validFacebookUrl = (v: string) => {
     }
     return null;
   } catch {
-    return "Must be a valid URL (e.g., https://facebook.com/...)";
+    return "Must be a valid URL (e.g.: https://facebook.com/...)";
   }
 };
 const validGitHubOrDriveUrl = (v: string) => {
@@ -177,7 +177,7 @@ const COLLEGE_PROGRAMS: Record<string, string[]> = {
   "College of Computer Studies": [
     "BS Information Technology",
     "BS Computer Science",
-    "BS Information Systems"
+    "BS Information Systems",
   ],
   "College of Engineering": ["BS Industrial Engineering", "BS Electronics Engineering"],
   "College of Business and Accountancy": ["BS Accountancy", "BS Entrepreneurship"],
