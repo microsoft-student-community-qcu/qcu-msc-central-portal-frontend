@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
+import { getApiEndpoint } from "@/lib/api-config";
 
 // IdUploadScanner pulls in tesseract.js (~2MB). Lazy-load so the intro
 // stage of /apply stays light; the chunk fetches when the user reaches scan.
@@ -443,11 +444,7 @@ function ApplyPage() {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
 
-      const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) {
-        throw new Error("VITE_API_URL environment variable is required");
-      }
-      const res = await fetch(`${API_URL}/ocr/verify`, { method: "POST", body: fd });
+      const res = await fetch(getApiEndpoint("/ocr/verify"), { method: "POST", body: fd });
       const json = await res.json();
 
       if (res.ok && json.success) {
@@ -652,11 +649,7 @@ function ApplyPage() {
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
-      const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) {
-        throw new Error("VITE_API_URL environment variable is required");
-      }
-      const res = await fetch(`${API_URL}/applicants`, {
+      const res = await fetch(getApiEndpoint("/applicants"), {
         method: "POST",
         body: fd,
       });
@@ -681,7 +674,8 @@ function ApplyPage() {
         sessionStorage.setItem(
           "qcumsc.applicant",
           JSON.stringify({
-            studentId: manualRequired ? form.studentId : json.data.studentId,
+            applicantId: json.data?.id || json.data?.applicantId,
+            studentId: manualRequired ? form.studentId : json.data?.studentId || form.studentId,
             fullName: form.fullName,
             email: form.email,
             role: form.role,

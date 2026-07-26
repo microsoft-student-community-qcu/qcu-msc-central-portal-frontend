@@ -7,11 +7,13 @@
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
 
 export default defineConfig({
-  server: {
-    proxy: {
-      "/api": {
-        target: process.env.VITE_API_URL || "http://localhost:5000",
-        changeOrigin: true,
+  vite: {
+    server: {
+      proxy: {
+        "/api": {
+          target: process.env.VITE_API_URL || "http://localhost:5000",
+          changeOrigin: true,
+        },
       },
     },
   },
@@ -27,5 +29,5 @@ export default defineConfig({
         proxy: `${process.env.VITE_API_URL || "http://localhost:5000"}/api/**`,
       },
     },
-  },
+  } as any,
 });
