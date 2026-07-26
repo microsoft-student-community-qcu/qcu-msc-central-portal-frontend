@@ -35,6 +35,7 @@ const IdUploadScanner = lazy(() =>
   })),
 );
 
+import { getApiEndpoint } from "@/lib/api-config";
 export const Route = createFileRoute("/apply/")({
   head: () => ({
     meta: [
@@ -453,12 +454,7 @@ function ApplyPage() {
     try {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
-
-      const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) {
-        throw new Error("VITE_API_URL environment variable is required");
-      }
-      const res = await fetch(`${API_URL}/ocr/verify`, { method: "POST", body: fd });
+      const res = await fetch(getApiEndpoint("/api/v1/ocr/verify"), { method: "POST", body: fd });
       const json = await res.json();
 
       if (res.ok && json.success) {
@@ -673,11 +669,7 @@ function ApplyPage() {
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
-      const API_URL = import.meta.env.VITE_API_URL;
-      if (!API_URL) {
-        throw new Error("VITE_API_URL environment variable is required");
-      }
-      const res = await fetch(`${API_URL}/applicants`, {
+      const res = await fetch(getApiEndpoint("/api/v1/applicants"), {
         method: "POST",
         body: fd,
       });

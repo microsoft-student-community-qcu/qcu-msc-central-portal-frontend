@@ -18,6 +18,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { getApiEndpoint } from "@/lib/api-config";
+
 export const Route = createFileRoute("/portal/tracking")({
   head: () => ({
     meta: [
@@ -74,8 +76,7 @@ function TrackingPage() {
   useEffect(() => {
     const loadApplicant = async () => {
       try {
-        console.log("Fetching applicant from:", `${import.meta.env.VITE_API_URL}/applicants/me`);
-        const res = await authClient.$fetch(`${import.meta.env.VITE_API_URL}/applicants/me`) as any;
+        const res = await authClient.$fetch(getApiEndpoint("/api/v1/applicants/me")) as any;
         console.log("Applicant data response:", res);
 
         if (res.error) {
@@ -170,7 +171,7 @@ function TrackingPage() {
         fd.append("curriculumVitae", cvFile);
       }
 
-      const res = await authClient.$fetch(`${import.meta.env.VITE_API_URL}/applicants/${applicant.id}/resubmit`, {
+      const res = await authClient.$fetch(getApiEndpoint(`/api/v1/applicants/${applicant.id}/resubmit`), {
         method: "POST",
         body: fd,
       }) as any;

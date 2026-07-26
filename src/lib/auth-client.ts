@@ -1,17 +1,22 @@
 import { createAuthClient } from "better-auth/react";
+import { getApiBaseURL } from "./api-config";
 
 const getAuthBaseURL = () => {
-  const apiUrl = import.meta.env.VITE_API_URL;
+  const apiUrl = getApiBaseURL();
   if (!apiUrl) {
-    throw new Error("VITE_API_URL environment variable is required");
+    return "/api/auth";
   }
   try {
-    return new URL(apiUrl).origin;
+    if (apiUrl.startsWith("http")) {
+      return new URL(apiUrl).origin + "/api/auth";
+    }
+    return `${apiUrl}/auth`;
   } catch {
-    return "/";
+    return "/api/auth";
   }
 };
 
 export const authClient = createAuthClient({
   baseURL: getAuthBaseURL(),
 });
+
