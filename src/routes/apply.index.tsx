@@ -179,7 +179,7 @@ const COLLEGE_PROGRAMS: Record<string, string[]> = {
     "BS Computer Science",
     "BS Information Systems",
   ],
-  "College of Engineering": ["BS Industrial Engineering", "BS Electronics Engineering"],
+  "College of Engineering": ["BS Industrial Engineering", "BS Electronics Engineering", "College of Computer Engineering"],
   "College of Business and Accountancy": ["BS Accountancy", "BS Entrepreneurship"],
   "College of Education": ["BS Early Childhood Education"],
 };
@@ -424,7 +424,7 @@ function ApplyPage() {
   useEffect(() => {
     if (hasActiveAccountRedirect()) {
       setRedirectingToAccount(true);
-      void navigate({ to: "/apply/account", replace: true }).catch(() => {
+      void navigate({ to: "/apply/account", search: {}, replace: true }).catch(() => {
         setRedirectingToAccount(false);
       });
     }

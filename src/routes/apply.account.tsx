@@ -23,7 +23,7 @@ import { authClient } from "@/lib/auth-client";
 import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/apply/account")({
-  validateSearch: (search: Record<string, unknown>) => {
+  validateSearch: (search: Record<string, unknown>): { token?: string } => {
     return {
       token: search.token as string | undefined,
     };
@@ -158,7 +158,7 @@ function ApplyAccountPage() {
       if (applicant.applicantId) {
         // Now link the applicant ID with the newly created user
         try {
-          const linkRes = await authClient.$fetch(`${API_URL}/users/link-applicant`, {
+          const linkRes = await authClient.$fetch(getApiEndpoint("/users/link-applicant"), {
             method: "POST",
             body: { applicantId: applicant.applicantId }
           }) as any;
