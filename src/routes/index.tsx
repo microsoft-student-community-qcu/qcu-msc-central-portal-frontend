@@ -25,6 +25,8 @@ import azureCommunityLogo from "../assets/images/partners/microsoft-azure-commun
 import bitsLogo from "../assets/images/partners/bits.svg";
 import mscPupLogo from "../assets/images/partners/msc-pup.svg";
 import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
+import datacampDonatesLogo from "../assets/images/partners/datacamp-donates.svg";
+import commonGroundDonAntonio from "../assets/images/partners/common-ground-don-antonio.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -98,6 +100,8 @@ const PARTNERS: Partner[] = [
   { name: "BITS", logo: bitsLogo },
   { name: "MSC PUP", logo: mscPupLogo },
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
+  { name: "DataCamp Donates", logo: datacampDonatesLogo },
+  { name: "Common Ground Don Antonio", logo: commonGroundDonAntonio },
 ];
 
 function Landing() {
@@ -919,7 +923,7 @@ function WallOfLogos() {
 }
 
 function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: string[] }) {
-  const perSlide = 4;
+  const perSlide = 5; // Changed from 4 to 5 to accommodate the new partner
   const slides: Partner[][] = [];
   for (let i = 0; i < partners.length; i += perSlide) {
     slides.push(partners.slice(i, i + perSlide));
@@ -972,10 +976,6 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
                         opacity: 0.55,
                       }}
                     />
-                    {/* object-contain + square container preserves each
-                        logo's native aspect ratio (all four source SVGs
-                        are 1:1, but this holds even if that changes) —
-                        never crops or stretches the mark. */}
                     <img
                       src={p.logo}
                       alt={`${p.name} logo`}
