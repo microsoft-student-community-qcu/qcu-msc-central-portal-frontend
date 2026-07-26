@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
+import { getApiEndpoint } from "@/lib/api-config";
 
 // IdUploadScanner pulls in tesseract.js (~2MB). Lazy-load so the intro
 // stage of /apply stays light; the chunk fetches when the user reaches scan.
@@ -31,11 +32,6 @@ const IdUploadScanner = lazy(() =>
     default: m.IdUploadScanner,
   })),
 );
-
-
-
-
-import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/apply/")({
   head: () => ({
@@ -84,27 +80,43 @@ type FormState = {
 };
 
 const INITIAL: FormState = {
-  fullName: "", college: "", program: "", section: "", campus: "",
-  studentId: "", dateOfBirth: "", placeOfBirth: "", gender: "", role: "",
-  certificateOfRegistration: "", curriculumVitae: "",
-  houseAddress: "", cellphone: "", email: "", facebookLink: "",
-  interests: "", pastOrganizations: "",
-  portfolio: "", githubOrProjects: "", previousWorks: "",
+  fullName: "",
+  college: "",
+  program: "",
+  section: "",
+  campus: "",
+  studentId: "",
+  dateOfBirth: "",
+  placeOfBirth: "",
+  gender: "",
+  role: "",
+  certificateOfRegistration: "",
+  curriculumVitae: "",
+  houseAddress: "",
+  cellphone: "",
+  email: "",
+  facebookLink: "",
+  interests: "",
+  pastOrganizations: "",
+  portfolio: "",
+  githubOrProjects: "",
+  previousWorks: "",
 };
 
 type FieldKind = "text" | "email" | "tel" | "date" | "textarea" | "select" | "file";
 
 type Question = {
   key: keyof FormState;
-  chapter: string;       // "Chapter 1 · The basics"
-  greeting?: string;     // Optional warm intro line that appears above the prompt
-  prompt: string;        // The actual question
-  helper?: string;       // Small helper hint under the input
+  chapter: string; // "Chapter 1 · The basics"
+  greeting?: string; // Optional warm intro line that appears above the prompt
+  prompt: string; // The actual question
+  helper?: string; // Small helper hint under the input
   placeholder?: string;
   kind: FieldKind;
-  options?: string[];    // For select
+  options?: string[]; // For select
   optional?: boolean;
   validate?: (value: string) => string | null;
+  optionsFor?: (form: FormState) => string[]; // Dynamic options based on form state
 };
 
 const required = (v: string) => (v.trim() ? null : "This one's required to continue.");
@@ -127,6 +139,18 @@ const validUrl = (v: string) => {
     return "Must be a valid URL (e.g., https://...)";
   }
 };
+const validFacebookUrl = (v: string) => {
+  if (!v.trim()) return null;
+  try {
+    const url = new URL(v.trim());
+    if (!url.hostname.includes("facebook.com") && !url.hostname.includes("fb.com")) {
+      return "Must be a valid Facebook profile URL.";
+    }
+    return null;
+  } catch {
+    return "Must be a valid URL (e.g.: https://facebook.com/...)";
+  }
+};
 const validGitHubOrDriveUrl = (v: string) => {
   if (!v.trim()) return null;
   try {
@@ -140,6 +164,26 @@ const validGitHubOrDriveUrl = (v: string) => {
   }
 };
 const requiredUrl = (v: string) => required(v) || validUrl(v);
+
+const MAX_DATE_OF_BIRTH = "2008-12-31";
+const validDateOfBirth = (v: string) => {
+  if (!v.trim()) return "Please enter your date of birth.";
+  const date = new Date(v);
+  const maxDate = new Date(MAX_DATE_OF_BIRTH);
+  return null;
+};
+
+// College -> Programs mapping
+const COLLEGE_PROGRAMS: Record<string, string[]> = {
+  "College of Computer Studies": [
+    "BS Information Technology",
+    "BS Computer Science",
+    "BS Information Systems",
+  ],
+  "College of Engineering": ["BS Industrial Engineering", "BS Electronics Engineering", "BS Computer Engineering"],
+  "College of Business and Accountancy": ["BS Accountancy", "BS Entrepreneurship"],
+  "College of Education": ["BS Early Childhood Education"],
+};
 
 const QUESTIONS: Question[] = [
   // Chapter 1 — Getting to know you
@@ -157,9 +201,8 @@ const QUESTIONS: Question[] = [
     key: "dateOfBirth",
     chapter: "Chapter 1 · Getting to know you",
     prompt: "When's your birthday?",
-    helper: "We promise — no surprise cakes (unless you want one).",
     kind: "date",
-    validate: required,
+    validate: validDateOfBirth,
   },
   {
     key: "placeOfBirth",
@@ -186,7 +229,8 @@ const QUESTIONS: Question[] = [
     greeting: "Awesome. Let's talk school for a sec.",
     prompt: "Which college are you in?",
     placeholder: "College of Computer Studies",
-    kind: "text",
+    kind: "select",
+    options: Object.keys(COLLEGE_PROGRAMS),
     validate: required,
   },
   {
@@ -194,7 +238,10 @@ const QUESTIONS: Question[] = [
     chapter: "Chapter 2 · Your academic life",
     prompt: "What program are you taking?",
     placeholder: "BS Information Technology",
-    kind: "text",
+    kind: "select",
+    optionsFor: (form: FormState) => {
+      return COLLEGE_PROGRAMS[form.college] || ["Select a college first"];
+    },
     validate: required,
   },
   {
@@ -214,7 +261,6 @@ const QUESTIONS: Question[] = [
     validate: required,
   },
   // studentId is captured via Zonal OCR before the form starts.
-
 
   // Chapter 3 — Your role with us
   {
@@ -289,7 +335,7 @@ const QUESTIONS: Question[] = [
     prompt: "What's your Facebook profile link?",
     placeholder: "https://facebook.com/your.profile",
     kind: "text",
-    validate: requiredUrl,
+    validate: validFacebookUrl,
   },
 
   // Chapter 6 — A little more about you
@@ -316,7 +362,7 @@ const QUESTIONS: Question[] = [
   {
     key: "portfolio",
     chapter: "Chapter 7 · Anything else? (optional)",
-    greeting: "These last three are completely optional. Skip freely.",
+    greeting: "These last three are completely optional.",
     prompt: "Got a portfolio you'd like to share?",
     placeholder: "https://your-portfolio.com",
     kind: "text",
@@ -347,7 +393,9 @@ const QUESTIONS: Question[] = [
 function ApplyPage() {
   const navigate = useNavigate();
   const [clientReady, setClientReady] = useState(false);
-  const [redirectingToAccount, setRedirectingToAccount] = useState(() => hasActiveAccountRedirect());
+  const [redirectingToAccount, setRedirectingToAccount] = useState(() =>
+    hasActiveAccountRedirect(),
+  );
   const [stage, setStage] = useState<"scan" | "confirm" | "form">("scan");
   const [provisionalIdFile, setProvisionalIdFile] = useState<File | null>(null);
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
@@ -377,11 +425,7 @@ function ApplyPage() {
   useEffect(() => {
     if (hasActiveAccountRedirect()) {
       setRedirectingToAccount(true);
-      void navigate({
-        to: "/apply/account",
-        search: { token: undefined },
-        replace: true
-      }).catch(() => {
+      void navigate({ to: "/apply/account", search: {}, replace: true }).catch(() => {
         setRedirectingToAccount(false);
       });
     }
@@ -399,41 +443,34 @@ function ApplyPage() {
     try {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
-      
-      const res = await fetch(getApiEndpoint("/api/v1/ocr/verify"), { method: "POST", body: fd });
+
+      const res = await fetch(getApiEndpoint("/ocr/verify"), { method: "POST", body: fd });
       const json = await res.json();
 
       if (res.ok && json.success) {
-        if (json.data && json.data.alreadySubmitted) {
-          void navigate({
-            to: "/apply/account",
-            search: { token: json.data.setupToken },
-            replace: true
-          });
-          return;
-        }
-
         setOcrSessionId(json.data.ocrSessionId);
         setManualRequired(json.data.manualRequired);
-        
+
         // Pre-fill
         setConfirmStudentId(json.data.studentId || "");
-        
+
         const lastName = json.data.lastName || "";
         const firstName = json.data.firstName || "";
         const middleInitial = json.data.middleInitial || "";
-        
+
         setConfirmLastName(lastName);
         setConfirmFirstName(firstName);
         setConfirmMiddleInitial(middleInitial);
         setDigitCorrectedInName(!!json.data.digitCorrectedInName);
-        
+
         let cleanMI = middleInitial.trim().replace(/\.+$/, "");
         if (cleanMI) {
           cleanMI = cleanMI + ".";
         }
-        const formattedName = `${lastName}, ${firstName}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
-        setForm(f => ({ ...f, fullName: formattedName }));
+        const formattedName = `${lastName}, ${firstName}${cleanMI ? " " + cleanMI : ""}`
+          .trim()
+          .replace(/\s+/g, " ");
+        setForm((f) => ({ ...f, fullName: formattedName }));
       } else {
         if (json.data && json.data.manualRequired) {
           setOcrSessionId(json.data.ocrSessionId);
@@ -452,7 +489,7 @@ function ApplyPage() {
       setOcrError(
         err instanceof Error
           ? err.message
-          : "We couldn't read your ID automatically. You can type the details in."
+          : "We couldn't read your ID automatically. You can type the details in.",
       );
       setManualRequired(true); // Fallback to manual if API is down
     } finally {
@@ -480,7 +517,10 @@ function ApplyPage() {
     if (cleanMI) {
       cleanMI = cleanMI + ".";
     }
-    const formattedName = `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`.trim().replace(/\s+/g, ' ');
+    const formattedName =
+      `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`
+        .trim()
+        .replace(/\s+/g, " ");
     setForm((f) => ({
       ...f,
       studentId: confirmStudentId.trim(),
@@ -492,32 +532,38 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-
-
   const total = flowQuestions.length;
   const onReview = false;
   const q = flowQuestions[Math.min(idx, total - 1)];
   const progress = useMemo(
-    () => (submitted ? 100 : Math.round(((idx) / total) * 100)),
+    () => (submitted ? 100 : Math.round((idx / total) * 100)),
     [idx, total, submitted],
   );
 
   useEffect(() => {
-    if (q && (q.kind === "text" || q.kind === "email" || q.kind === "tel" || q.kind === "textarea")) {
+    if (
+      q &&
+      (q.kind === "text" || q.kind === "email" || q.kind === "tel" || q.kind === "textarea")
+    ) {
       inputRef.current?.focus();
     }
   }, [idx, q]);
 
   const update = (key: keyof FormState, value: string, file?: File) => {
-    setForm((f) => ({ ...f, [key]: value }));
-    if (file) setFiles(prev => ({ ...prev, [key]: file }));
+    // If college changes, clear program
+    if (key === "college") {
+      setForm((f) => ({ ...f, [key]: value, program: "" }));
+    } else {
+      setForm((f) => ({ ...f, [key]: value }));
+    }
+    if (file) setFiles((prev) => ({ ...prev, [key]: file }));
     setError(null);
   };
 
   const goNext = () => {
     if (!q) return;
     const v = String(form[q.key] ?? "");
-    
+
     if (q.optional && !v.trim()) {
       // Optional and empty is fine
     } else if (q.validate) {
@@ -542,28 +588,16 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const skip = () => {
-    if (q?.optional) {
-      update(q.key, "");
-      if (idx === total - 1) {
-        submit();
-      } else {
-        setIdx((i) => Math.min(total - 1, i + 1));
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    }
-  };
-
   const submit = async () => {
     setError(null);
     try {
       const fd = new FormData();
-      
+
       let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
       if (cleanMI) {
         cleanMI = cleanMI + ".";
       }
-      
+
       fd.append("firstName", confirmFirstName.trim());
       fd.append("lastName", confirmLastName.trim());
       if (cleanMI) {
@@ -573,22 +607,22 @@ function ApplyPage() {
       fd.append("college", form.college);
       fd.append("program", form.program);
       fd.append("section", form.section);
-      
+
       let backendCampus = "SAN_BARTOLOME_MAIN";
       if (form.campus.toUpperCase().includes("SAN FRANCISCO")) backendCampus = "SAN_FRANCISCO";
       if (form.campus.toUpperCase().includes("BATASAN")) backendCampus = "BATASAN";
       fd.append("campus", backendCampus);
-      
+
       if (form.dateOfBirth) fd.append("dateOfBirth", form.dateOfBirth);
       fd.append("placeOfBirth", form.placeOfBirth);
-      
+
       let backendGender = "PREFER_NOT_TO_SAY";
       const g = form.gender.toUpperCase();
       if (g.includes("MALE") && !g.includes("FEMALE")) backendGender = "MALE";
       else if (g.includes("FEMALE")) backendGender = "FEMALE";
       else if (g.includes("LGBTQ")) backendGender = "LGBTQIA";
       fd.append("gender", backendGender);
-      
+
       fd.append("membershipRole", form.role);
       fd.append("houseAddress", form.houseAddress);
       fd.append("cellphoneNumber", form.cellphone);
@@ -596,25 +630,31 @@ function ApplyPage() {
       fd.append("facebookLink", form.facebookLink);
       fd.append("interestsSkillsHobbies", form.interests);
       fd.append("organizationHistory", form.pastOrganizations || "N/A");
-      
+
       if (form.portfolio) fd.append("portfolio", form.portfolio);
       if (form.githubOrProjects) fd.append("githubOrProjectLinks", form.githubOrProjects);
       if (form.previousWorks) fd.append("previousWorksAchievements", form.previousWorks);
-      
+
       if (ocrSessionId) fd.append("ocrSessionId", ocrSessionId);
       if (manualRequired) fd.append("studentId", form.studentId);
-      
-      if (!files.certificateOfRegistration) throw new Error(`Please re-select your Certificate of Registration file. Debug memory: ${Object.keys(files).join(", ") || "none"}`);
-      if (!files.curriculumVitae) throw new Error(`Please re-select your Curriculum Vitae file. Debug memory: ${Object.keys(files).join(", ") || "none"}`);
+
+      if (!files.certificateOfRegistration)
+        throw new Error(
+          `Please re-select your Certificate of Registration file. Debug memory: ${Object.keys(files).join(", ") || "none"}`,
+        );
+      if (!files.curriculumVitae)
+        throw new Error(
+          `Please re-select your Curriculum Vitae file. Debug memory: ${Object.keys(files).join(", ") || "none"}`,
+        );
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
-      const res = await fetch(getApiEndpoint("/api/v1/applicants"), {
+      const res = await fetch(getApiEndpoint("/applicants"), {
         method: "POST",
-        body: fd
+        body: fd,
       });
       const json = await res.json();
-      
+
       if (!res.ok || !json.success) {
         let errorMsg = json.message || "Submission failed.";
         if (json.errors) {
@@ -634,8 +674,8 @@ function ApplyPage() {
         sessionStorage.setItem(
           "qcumsc.applicant",
           JSON.stringify({
-            applicantId: json.data.id,
-            studentId: manualRequired ? form.studentId : json.data.studentId,
+            applicantId: json.data?.id || json.data?.applicantId,
+            studentId: manualRequired ? form.studentId : json.data?.studentId || form.studentId,
             fullName: form.fullName,
             email: form.email,
             role: form.role,
@@ -648,11 +688,7 @@ function ApplyPage() {
       } catch {
         /* ignore */
       }
-      void navigate({
-        to: "/apply/account",
-        search: { token: json.data.setupToken },
-        replace: true
-      }).catch(() => {
+      void navigate({ to: "/apply/account", replace: true }).catch(() => {
         setRedirectingToAccount(false);
       });
     } catch (err: any) {
@@ -661,7 +697,6 @@ function ApplyPage() {
       setSubmitted(false);
     }
   };
-
 
   const reset = () => {
     setForm(INITIAL);
@@ -680,7 +715,6 @@ function ApplyPage() {
     setStage("scan");
   };
 
-
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && q && q.kind !== "textarea") {
       e.preventDefault();
@@ -689,8 +723,7 @@ function ApplyPage() {
   };
 
   // Chapter intro: show greeting only on the first question of a chapter
-  const isChapterStart =
-    q !== null && (idx === 0 || flowQuestions[idx - 1].chapter !== q.chapter);
+  const isChapterStart = q !== null && (idx === 0 || flowQuestions[idx - 1].chapter !== q.chapter);
 
   if (!clientReady) {
     return <ApplyBootScreen />;
@@ -701,7 +734,10 @@ function ApplyPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <PlanetsField />
 
@@ -732,7 +768,13 @@ function ApplyPage() {
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
             <MissionPanel
               eyebrow="Pre-flight check"
-              title={<>Verify your<br/><span className="text-brand-orange">student orbit</span></>}
+              title={
+                <>
+                  Verify your
+                  <br />
+                  <span className="text-brand-orange">student orbit</span>
+                </>
+              }
               subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet."
               stats={[
                 { label: "Step", value: "00" },
@@ -742,10 +784,15 @@ function ApplyPage() {
             />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
-                <Suspense fallback={<div className="grid h-72 place-items-center text-sm text-white/70">Preparing on-device scanner…</div>}>
+                <Suspense
+                  fallback={
+                    <div className="grid h-72 place-items-center text-sm text-white/70">
+                      Preparing on-device scanner…
+                    </div>
+                  }
+                >
                   <IdUploadScanner onSubmit={handleScanComplete} />
                 </Suspense>
-
               </div>
             </div>
           </div>
@@ -753,7 +800,13 @@ function ApplyPage() {
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
             <MissionPanel
               eyebrow="Confirm identity"
-              title={<>Double-check your<br/><span className="text-brand-orange">ID details</span></>}
+              title={
+                <>
+                  Double-check your
+                  <br />
+                  <span className="text-brand-orange">ID details</span>
+                </>
+              }
               subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email."
               stats={[
                 { label: "Step", value: "01" },
@@ -795,9 +848,17 @@ function ApplyPage() {
               eyebrow={onReview ? "Final review" : q!.chapter}
               title={
                 onReview ? (
-                  <>One last<br/><span className="text-brand-orange">orbital check</span></>
+                  <>
+                    One last
+                    <br />
+                    <span className="text-brand-orange">orbital check</span>
+                  </>
                 ) : (
-                  <>Travel the<br/><span className="text-brand-orange">QCU MSC</span></>
+                  <>
+                    Travel the
+                    <br />
+                    <span className="text-brand-orange">QCU MSC</span>
+                  </>
                 )
               }
               subtitle={
@@ -806,7 +867,10 @@ function ApplyPage() {
                   : "One quick question at a time. We're charting your route across the constellation — no pressure."
               }
               stats={[
-                { label: "Question", value: onReview ? `${total}/${total}` : `${idx + 1}/${total}` },
+                {
+                  label: "Question",
+                  value: onReview ? `${total}/${total}` : `${idx + 1}/${total}`,
+                },
                 { label: "Progress", value: `${progress}%` },
                 { label: "Heading", value: onReview ? "Review" : "Forward" },
               ]}
@@ -818,96 +882,97 @@ function ApplyPage() {
                 key={idx}
                 className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-10 animate-in fade-in slide-in-from-bottom-2 duration-300"
               >
-              {onReview ? (
-                <ReviewStep form={form} onEdit={(key) => {
-                  const i = flowQuestions.findIndex((x) => x.key === key);
-                  if (i >= 0) setIdx(i);
-                }} />
-              ) : (
-                <div className="space-y-6" onKeyDown={onKeyDown}>
-                  {isChapterStart && q!.greeting && (
-                    <p className="font-body text-sm italic text-brand-blue-deep/70">
-                      {q!.greeting}
-                    </p>
-                  )}
-                  <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
-                    {q!.prompt}
-                    {q!.optional && (
-                      <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-[0.18em] text-brand-blue-deep/50">
-                        optional
-                      </span>
-                    )}
-                  </h2>
-
-                  <QuestionInput
-                    q={q!}
-                    value={String(form[q!.key] ?? "")}
-                    onChange={(v, f) => update(q!.key, v, f)}
-                    inputRef={inputRef}
+                {onReview ? (
+                  <ReviewStep
+                    form={form}
+                    onEdit={(key) => {
+                      const i = flowQuestions.findIndex((x) => x.key === key);
+                      if (i >= 0) setIdx(i);
+                    }}
                   />
-
-                  {q!.helper && !error && (
-                    <p className="text-xs text-brand-blue-deep/60">{q!.helper}</p>
-                  )}
-                  {error && (
-                    <p className="text-xs font-medium text-red-600">{error}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Nav */}
-              <div className="mt-8 flex items-center justify-between gap-3 border-t border-white/60 pt-6">
-                {idx > 0 ? (
-                  <button
-                    type="button"
-                    onClick={goBack}
-                    className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white"
-                  >
-                    <ArrowLeft className="size-4" /> Back to Space
-                  </button>
                 ) : (
-                  <span />
+                  <div className="space-y-6" onKeyDown={onKeyDown}>
+                    {isChapterStart && q!.greeting && (
+                      <p className="font-body text-sm italic text-brand-blue-deep/70">
+                        {q!.greeting}
+                      </p>
+                    )}
+                    <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
+                      {q!.prompt}
+                      {q!.optional && (
+                        <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-[0.18em] text-brand-blue-deep/50">
+                          optional
+                        </span>
+                      )}
+                    </h2>
+
+                    <QuestionInput
+                      q={q!}
+                      value={String(form[q!.key] ?? "")}
+                      onChange={(v, f) => update(q!.key, v, f)}
+                      inputRef={inputRef}
+                      form={form}
+                    />
+
+                    {q!.helper && !error && (
+                      <p className="text-xs text-brand-blue-deep/60">{q!.helper}</p>
+                    )}
+                    {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+                  </div>
                 )}
-                <div className="flex items-center gap-2">
-                  {q?.optional && (
+
+                {/* Nav */}
+                <div className="mt-8 flex items-center justify-between gap-3 border-t border-white/60 pt-6">
+                  {idx > 0 ? (
                     <button
                       type="button"
-                      onClick={skip}
-                      className="rounded-full px-4 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep/70 hover:text-brand-blue-deep"
+                      onClick={goBack}
+                      className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white"
                     >
-                      Skip
-                    </button>
-                  )}
-                  {onReview ? (
-                    <button
-                      type="button"
-                      onClick={submit}
-                      className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
-                      style={{ background: "var(--gradient-cta)" }}
-                    >
-                      Submit Application <Rocket className="size-4" />
+                      <ArrowLeft className="size-4" /> Back to Space
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={goNext}
-                      className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
-                      style={{ background: "var(--gradient-cta)" }}
-                    >
-                      {idx === total - 1 ? (
-                        <>Submit Application <Rocket className="size-4" /></>
-                      ) : (
-                        <>Continue <ArrowRight className="size-4" /></>
-                      )}
-                    </button>
+                    <span />
                   )}
+                  <div className="flex items-center gap-2">
+                    {onReview ? (
+                      <button
+                        type="button"
+                        onClick={submit}
+                        className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                        style={{ background: "var(--gradient-cta)" }}
+                      >
+                        Submit Application <Rocket className="size-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={goNext}
+                        className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                        style={{ background: "var(--gradient-cta)" }}
+                      >
+                        {idx === total - 1 ? (
+                          <>
+                            Submit Application <Rocket className="size-4" />
+                          </>
+                        ) : (
+                          <>
+                            Continue <ArrowRight className="size-4" />
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
               </div>
 
               {!onReview && (
                 <p className="mt-4 hidden text-[11px] text-white/75 drop-shadow [@media(hover:hover)]:block">
-                  Press <kbd className="rounded bg-white/30 px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd> to continue
+                  Press{" "}
+                  <kbd className="rounded bg-white/30 px-1.5 py-0.5 font-mono text-[10px]">
+                    Enter
+                  </kbd>{" "}
+                  to continue
                 </p>
               )}
             </div>
@@ -920,7 +985,10 @@ function ApplyPage() {
 
 function ApplyBootScreen() {
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <PlanetsField />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 text-center">
@@ -942,7 +1010,10 @@ function ApplyBootScreen() {
 
 function AccountRedirectScreen() {
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <PlanetsField />
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 text-center">
@@ -969,17 +1040,22 @@ function QuestionInput({
   value,
   onChange,
   inputRef,
+  form,
 }: {
   q: Question;
   value: string;
   onChange: (v: string, file?: File) => void;
   inputRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+  form?: FormState;
 }) {
   const base = "bg-white/85 text-base";
+
   if (q.kind === "textarea") {
     return (
       <Textarea
-        ref={(el) => { inputRef.current = el; }}
+        ref={(el) => {
+          inputRef.current = el;
+        }}
         rows={4}
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -988,14 +1064,23 @@ function QuestionInput({
       />
     );
   }
+
   if (q.kind === "select") {
+    // Get options - either static or dynamic
+    let options: string[] = [];
+    if (q.optionsFor && form) {
+      options = q.optionsFor(form);
+    } else if (q.options) {
+      options = q.options;
+    }
+
     return (
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger className="h-14 w-full whitespace-normal bg-white/85 px-4 text-left text-base [&>span]:line-clamp-2 [&>span]:text-left">
           <SelectValue placeholder="Choose one…" />
         </SelectTrigger>
         <SelectContent className="max-w-[calc(100vw-2rem)]">
-          {q.options?.map((o) => (
+          {options.map((o) => (
             <SelectItem key={o} value={o} className="py-3 text-base">
               {o}
             </SelectItem>
@@ -1004,12 +1089,15 @@ function QuestionInput({
       </Select>
     );
   }
+
   if (q.kind === "file") {
     return (
       <label className="grid min-h-14 w-full max-w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 overflow-hidden rounded-md border border-input bg-white/85 px-3 py-3 text-sm shadow-sm transition hover:bg-white sm:px-4">
         <span className="flex min-w-0 items-center gap-2 text-brand-blue-deep">
           <Upload className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1 truncate">{value || "Choose a file (PDF, DOCX, JPG, PNG)"}</span>
+          <span className="min-w-0 flex-1 truncate">
+            {value || "Choose a file (PDF, DOCX, JPG, PNG)"}
+          </span>
         </span>
         <span className="shrink-0 rounded-full bg-brand-blue-deep px-3 py-1.5 text-[11px] font-semibold text-white">
           Browse
@@ -1027,9 +1115,15 @@ function QuestionInput({
     );
   }
 
+  if (q.kind === "date") {
+    return <BirthdayCalendarPicker value={value} onChange={onChange} inputRef={inputRef} />;
+  }
+
   return (
     <Input
-      ref={(el) => { inputRef.current = el; }}
+      ref={(el) => {
+        inputRef.current = el;
+      }}
       type={q.kind}
       value={value}
       onChange={(e) => {
@@ -1040,6 +1134,196 @@ function QuestionInput({
       className={`h-12 ${base}`}
       maxLength={q.kind === "tel" ? 11 : undefined}
     />
+  );
+}
+
+/* ---------- Birthday Calendar Picker ---------- */
+
+function BirthdayCalendarPicker({
+  value,
+  onChange,
+  inputRef,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  inputRef: React.MutableRefObject<HTMLInputElement | HTMLTextAreaElement | null>;
+}) {
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [viewYear, setViewYear] = useState(() => {
+    // If there's a selected value, use that year/month
+    if (value) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        return date.getFullYear();
+      }
+    }
+    // Otherwise default to December 2008
+    return 2008;
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    // If there's a selected value, use that year/month
+    if (value) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        return date.getMonth();
+      }
+    }
+    // Otherwise default to December (11)
+    return 11;
+  });
+
+  const selectedDate = value ? new Date(value) : null;
+  const maxDate = new Date(MAX_DATE_OF_BIRTH);
+
+  const months = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+
+  const getDaysInMonth = (year: number, month: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (year: number, month: number) => {
+    return new Date(year, month, 1).getDay();
+  };
+
+  const handleDateSelect = (day: number) => {
+    const date = new Date(viewYear, viewMonth, day);
+    if (date > maxDate) {
+      return; // Don't select dates after max
+    }
+    const formatted = date.toISOString().split("T")[0];
+    onChange(formatted);
+    setShowCalendar(false);
+  };
+
+  const isDateDisabled = (day: number) => {
+    const date = new Date(viewYear, viewMonth, day);
+    return date > maxDate;
+  };
+
+  const isDateSelected = (day: number) => {
+    if (!selectedDate) return false;
+    return (
+      selectedDate.getFullYear() === viewYear &&
+      selectedDate.getMonth() === viewMonth &&
+      selectedDate.getDate() === day
+    );
+  };
+
+  const renderCalendar = () => {
+    const daysInMonth = getDaysInMonth(viewYear, viewMonth);
+    const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
+    const days = [];
+
+    // Empty cells for days before the first day of month
+    for (let i = 0; i < firstDay; i++) {
+      days.push(<div key={`empty-${i}`} className="h-10" />);
+    }
+
+    // Days of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const disabled = isDateDisabled(day);
+      const selected = isDateSelected(day);
+      days.push(
+        <button
+          key={day}
+          onClick={() => handleDateSelect(day)}
+          disabled={disabled}
+          className={`h-10 rounded-lg text-sm font-medium transition-colors ${
+            selected
+              ? "bg-brand-orange text-white hover:bg-brand-orange/90"
+              : disabled
+                ? "text-gray-300 cursor-not-allowed"
+                : "hover:bg-brand-blue-light/20 text-brand-blue-deep"
+          }`}
+        >
+          {day}
+        </button>,
+      );
+    }
+
+    return days;
+  };
+
+  // Format the display value
+  const displayValue = value ? new Date(value) : null;
+  const isValidDisplay = displayValue && !isNaN(displayValue.getTime());
+
+  return (
+    <div className="relative">
+      <div
+        className="flex h-12 w-full cursor-pointer items-center rounded-md border border-input bg-white/85 px-3 text-base shadow-sm transition hover:bg-white"
+        onClick={() => setShowCalendar(!showCalendar)}
+      >
+        <span className={value && isValidDisplay ? "text-brand-blue-deep" : "text-gray-400"}>
+          {value && isValidDisplay
+            ? displayValue.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : "Select your birthday"}
+        </span>
+      </div>
+
+      {showCalendar && (
+        <div className="absolute z-50 mt-2 w-full min-w-[280px] rounded-xl border border-brand-blue-light/20 bg-white p-4 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <button
+              onClick={() => {
+                if (viewMonth === 0) {
+                  setViewYear(viewYear - 1);
+                  setViewMonth(11);
+                } else {
+                  setViewMonth(viewMonth - 1);
+                }
+              }}
+              className="rounded-lg p-1 hover:bg-brand-blue-light/20 transition-colors"
+            >
+              <ArrowLeft className="size-5 text-brand-blue-deep" />
+            </button>
+            <span className="font-display font-bold text-brand-blue-deep">
+              {months[viewMonth]} {viewYear}
+            </span>
+            <button
+              onClick={() => {
+                if (viewMonth === 11) {
+                  setViewYear(viewYear + 1);
+                  setViewMonth(0);
+                } else {
+                  setViewMonth(viewMonth + 1);
+                }
+              }}
+              className="rounded-lg p-1 hover:bg-brand-blue-light/20 transition-colors"
+            >
+              <ArrowRight className="size-5 text-brand-blue-deep" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((d) => (
+              <div key={d} className="text-center text-xs font-semibold text-brand-blue-deep/60">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7 gap-1">{renderCalendar()}</div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1089,8 +1373,7 @@ function ConfirmIdStep({
           Confirm your ID details
         </h3>
         <p className="mt-1 font-body text-sm text-brand-blue-deep/70">
-          We read your captured ID. Review the auto-filled fields and add your
-          QCU email.
+          We read your captured ID. Review the auto-filled fields and add your QCU email.
         </p>
       </div>
 
@@ -1107,7 +1390,10 @@ function ConfirmIdStep({
       <div className="grid gap-4">
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-            Student Number {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            Student Number{" "}
+            {loading && (
+              <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+            )}
           </div>
           <Input
             value={studentId}
@@ -1118,10 +1404,13 @@ function ConfirmIdStep({
           />
         </label>
 
-        <div className="grid grid-cols-[1fr_1fr_0.4fr] gap-3">
+        <div className="grid grid-cols-[1fr_1fr_0.6fr] gap-3">
           <label className="block">
-            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-              Last Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70 whitespace-nowrap">
+              Last Name{" "}
+              {loading && (
+                <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+              )}
             </div>
             <Input
               value={lastName}
@@ -1133,8 +1422,11 @@ function ConfirmIdStep({
           </label>
 
           <label className="block">
-            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-              First Name {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70 whitespace-nowrap">
+              First Name{" "}
+              {loading && (
+                <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+              )}
             </div>
             <Input
               value={firstName}
@@ -1146,8 +1438,11 @@ function ConfirmIdStep({
           </label>
 
           <label className="block">
-            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-              M.I. {loading && <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>}
+            <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70 whitespace-nowrap">
+              M.I.{" "}
+              {loading && (
+                <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+              )}
             </div>
             <Input
               value={middleInitial}
@@ -1155,14 +1450,15 @@ function ConfirmIdStep({
               placeholder={loading ? "…" : "S"}
               disabled={loading}
               maxLength={2}
-              className="h-12 bg-white/85 text-base text-center"
+              className="h-12 bg-white/85 text-base text-center min-w-[3.5rem]"
             />
           </label>
         </div>
 
         {digitCorrected && (
           <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-3 text-xs text-amber-500/90 font-medium">
-            Suspected numbers in name fields were automatically corrected. Please verify they are correct.
+            Suspected numbers in name fields were automatically corrected. Please verify they are
+            correct.
           </div>
         )}
 
@@ -1180,9 +1476,7 @@ function ConfirmIdStep({
         </label>
       </div>
 
-      {error && (
-        <p className="text-xs font-medium text-red-600">{error}</p>
-      )}
+      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/60 pt-5">
         <button
@@ -1208,13 +1502,7 @@ function ConfirmIdStep({
 
 /* ---------- Review ---------- */
 
-function ReviewStep({
-  form,
-  onEdit,
-}: {
-  form: FormState;
-  onEdit: (key: keyof FormState) => void;
-}) {
+function ReviewStep({ form, onEdit }: { form: FormState; onEdit: (key: keyof FormState) => void }) {
   // Group by chapter, in original order
   const chapters = useMemo(() => {
     const map = new Map<string, Question[]>();
@@ -1259,18 +1547,24 @@ function ReviewStep({
                     </div>
                     <div
                       className="mt-0.5 overflow-hidden text-sm text-brand-blue-deep"
-                      style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", wordBreak: "break-word" }}
+                      style={{
+                        display: "-webkit-box",
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: "vertical",
+                        wordBreak: "break-word",
+                      }}
                       title={v || undefined}
                     >
                       {display || <span className="text-brand-blue-deep/40">—</span>}
                     </div>
                   </div>
-                  <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-brand-orange">Edit</span>
+                  <span className="mt-0.5 shrink-0 text-[11px] font-semibold text-brand-orange">
+                    Edit
+                  </span>
                 </button>
               );
             })}
           </div>
-
         </div>
       ))}
     </div>
@@ -1283,14 +1577,18 @@ function SuccessCard({ onReset }: { onReset: () => void }) {
   const navigate = useNavigate();
   return (
     <div className="mt-10 rounded-3xl glass-strong p-8 text-center sm:p-12">
-      <div className="mx-auto grid size-20 place-items-center rounded-full" style={{ background: "var(--gradient-cta)" }}>
+      <div
+        className="mx-auto grid size-20 place-items-center rounded-full"
+        style={{ background: "var(--gradient-cta)" }}
+      >
         <CheckCircle2 className="size-10 text-white" />
       </div>
       <h2 className="mt-6 font-display text-3xl font-extrabold text-brand-blue-deep sm:text-4xl">
         Launch successful!
       </h2>
       <p className="mx-auto mt-3 max-w-md font-body text-brand-blue-deep/75">
-        Your application is now orbiting Mission Control. Sit tight — our team will beam back a message through your QCU email soon.
+        Your application is now orbiting Mission Control. Sit tight — our team will beam back a
+        message through your QCU email soon.
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <button
@@ -1337,9 +1635,7 @@ function MissionPanel({
         {title}
       </h1>
 
-      <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">
-        {subtitle}
-      </p>
+      <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">{subtitle}</p>
 
       {/* Destination planet illustration */}
       <div className="relative mt-10 hidden h-64 lg:block">
@@ -1407,17 +1703,21 @@ function DestinationPlanet() {
         <span className="absolute left-[55%] top-[60%] size-2 rounded-full bg-black/20" />
         <span className="absolute left-[65%] top-[25%] size-1.5 rounded-full bg-black/15" />
       </div>
-
-      
     </div>
   );
 }
 
 function PlanetsField() {
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 z-[1] hidden overflow-hidden sm:block">
+    <div
+      aria-hidden
+      className="pointer-events-none absolute inset-0 z-[1] hidden overflow-hidden sm:block"
+    >
       {/* Blue moon, top-right */}
-      <div className="absolute right-[6%] top-[14%] size-24 animate-planet-bob" style={{ animationDelay: "0s" }}>
+      <div
+        className="absolute right-[6%] top-[14%] size-24 animate-planet-bob"
+        style={{ animationDelay: "0s" }}
+      >
         <div
           className="size-full rounded-full opacity-90 shadow-[0_0_40px_rgba(80,160,255,0.35)]"
           style={{
@@ -1428,7 +1728,10 @@ function PlanetsField() {
       </div>
 
       {/* Tiny ringed planet, mid-left */}
-      <div className="absolute left-[4%] top-[55%] size-16 animate-planet-bob" style={{ animationDelay: "1.5s" }}>
+      <div
+        className="absolute left-[4%] top-[55%] size-16 animate-planet-bob"
+        style={{ animationDelay: "1.5s" }}
+      >
         <div
           className="size-full rounded-full"
           style={{
@@ -1438,12 +1741,17 @@ function PlanetsField() {
         />
         <div
           className="absolute left-1/2 top-1/2 h-1.5 w-24 -translate-x-1/2 -translate-y-1/2 rotate-[-22deg] rounded-full opacity-70"
-          style={{ background: "linear-gradient(90deg, transparent, rgba(255,200,140,0.85), transparent)" }}
+          style={{
+            background: "linear-gradient(90deg, transparent, rgba(255,200,140,0.85), transparent)",
+          }}
         />
       </div>
 
       {/* Small purple planet bottom-right */}
-      <div className="absolute bottom-[12%] right-[16%] size-12 animate-planet-bob" style={{ animationDelay: "2.5s" }}>
+      <div
+        className="absolute bottom-[12%] right-[16%] size-12 animate-planet-bob"
+        style={{ animationDelay: "2.5s" }}
+      >
         <div
           className="size-full rounded-full opacity-90"
           style={{
@@ -1454,7 +1762,10 @@ function PlanetsField() {
       </div>
 
       {/* Dot planet top-left */}
-      <div className="absolute left-[18%] top-[8%] size-8 animate-planet-bob" style={{ animationDelay: "3.2s" }}>
+      <div
+        className="absolute left-[18%] top-[8%] size-8 animate-planet-bob"
+        style={{ animationDelay: "3.2s" }}
+      >
         <div
           className="size-full rounded-full opacity-80"
           style={{
@@ -1470,10 +1781,17 @@ function PlanetsField() {
         viewBox="0 0 400 400"
         fill="none"
       >
-        <ellipse cx="200" cy="200" rx="180" ry="120" stroke="white" strokeDasharray="4 8" strokeWidth="1" transform="rotate(-18 200 200)" />
+        <ellipse
+          cx="200"
+          cy="200"
+          rx="180"
+          ry="120"
+          stroke="white"
+          strokeDasharray="4 8"
+          strokeWidth="1"
+          transform="rotate(-18 200 200)"
+        />
       </svg>
-
-      
     </div>
   );
 }

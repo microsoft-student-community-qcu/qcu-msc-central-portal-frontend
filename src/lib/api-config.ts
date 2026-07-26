@@ -16,13 +16,31 @@ export const getApiBaseURL = (): string => {
 
 export const getApiEndpoint = (path: string): string => {
   const baseUrl = getApiBaseURL();
-  const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  let cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  let cleanPath = path.startsWith("/") ? path : `/${path}`;
 
   if (!cleanBase) {
     if (cleanPath.startsWith("/api/v1")) return cleanPath;
     if (cleanPath.startsWith("/api")) return cleanPath;
     return `/api/v1${cleanPath}`;
+  }
+
+  if (cleanBase.endsWith("/api/v1")) {
+    if (cleanPath.startsWith("/api/v1/")) {
+      cleanPath = cleanPath.slice(7);
+    } else if (cleanPath === "/api/v1") {
+      cleanPath = "";
+    } else if (cleanPath.startsWith("/api/")) {
+      cleanPath = cleanPath.slice(4);
+    }
+  } else if (cleanBase.endsWith("/api")) {
+    if (cleanPath.startsWith("/api/")) {
+      cleanPath = cleanPath.slice(4);
+    }
+  } else {
+    if (!cleanPath.startsWith("/api/") && cleanPath !== "/api") {
+      cleanPath = `/api/v1${cleanPath}`;
+    }
   }
 
   return `${cleanBase}${cleanPath}`;
