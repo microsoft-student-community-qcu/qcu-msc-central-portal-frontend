@@ -23,7 +23,7 @@ import { authClient } from "@/lib/auth-client";
 import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/apply/account")({
-  validateSearch: (search: Record<string, unknown>) => {
+  validateSearch: (search: Record<string, unknown>): { token?: string } => {
     return {
       token: search.token as string | undefined,
     };
@@ -155,20 +155,22 @@ function ApplyAccountPage() {
         throw new Error(signUpRes.error.message || "Failed to create account.");
       }
 
-      if (applicant.applicantId) {
-        // Now link the applicant ID with the newly created user
-        try {
-          const linkRes = await authClient.$fetch(`${API_URL}/users/link-applicant`, {
-            method: "POST",
-            body: { applicantId: applicant.applicantId }
-          }) as any;
-          
-          if (linkRes && linkRes.success === false) {
-            console.error("Failed to link applicant to user account:", linkRes.message);
+      // Now link the applicant record with the newly created user account
+      try {
+        const linkRes = await authClient.$fetch(getApiEndpoint("/users/link-applicant"), {
+          method: "POST",
+          body: {
+            ...(applicant.applicantId ? { applicantId: applicant.applicantId } : {}),
+            email: applicant.email,
+            studentId: applicant.studentId,
           }
-        } catch (linkErr) {
-          console.error("Failed to link applicant to user account:", linkErr);
+        }) as any;
+        
+        if (linkRes && linkRes.success === false) {
+          console.error("Failed to link applicant to user account:", linkRes.message);
         }
+      } catch (linkErr) {
+        console.error("Failed to link applicant to user account:", linkErr);
       }
 
       try {
@@ -282,7 +284,7 @@ function ApplyAccountPage() {
             </p>
 
             <p className="mt-3 max-w-md font-body text-sm text-white/70 drop-shadow">
-              Set a password for your verified QCU email. From the next screen forward, your applicant
+              Set a password for your verified personal email. From the next screen forward, your applicant
               dashboard will show every checkpoint as it lights up.
             </p>
 
@@ -322,14 +324,14 @@ function ApplyAccountPage() {
                   Create your cockpit account
                 </h2>
                 <p className="font-body text-sm text-brand-blue-deep/65">
-                  This is the same QCU email we just verified — no need to retype it.
+                  This is the personal email address linked to your application — no need to retype it.
                 </p>
               </div>
 
               <div className="mt-7 space-y-5">
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-                    <Mail className="size-4" /> Verified QCU email
+                    <Mail className="size-4" /> Verified personal email
                   </label>
                   <Input
                     type="email"

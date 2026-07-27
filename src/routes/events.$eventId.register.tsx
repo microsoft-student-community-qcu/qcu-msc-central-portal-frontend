@@ -259,7 +259,7 @@ function RegisterPage() {
                 <LaunchedStep
                   event={event}
                   extracted={extracted}
-                  email={email || "you@qcu.edu.ph"}
+                  email={email || "you@example.com"}
                   onDone={() => navigate({ to: "/events" })}
                 />
               )}
@@ -585,7 +585,7 @@ function BoardingStep({
             type="email"
             value={email}
             onChange={(e) => onEmail(e.target.value)}
-            placeholder="you@qcu.edu.ph"
+            placeholder="you@example.com"
             aria-invalid={Boolean(errors.email)}
             className={inputClass(Boolean(errors.email))}
           />

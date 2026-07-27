@@ -1,139 +1,208 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Bell, MailOpen, X, Satellite } from "lucide-react";
 import { PortalCard, PortalShell } from "@/components/PortalShell";
 import { usePortalUser } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
+import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/portal/inbox")({
   head: () => ({ meta: [{ title: "M&D Inbox · QCU MSC" }] }),
   component: InboxPage,
 });
 
-const INBOX = [
-  {
-    id: "m1",
-    from: "M&D Team",
-    subject: "Welcome — what to expect next",
-    preview: "Hi! Thanks for applying to QCU MSC. Here's a quick look at the steps ahead…",
-    date: "Jun 22, 2026",
-    unread: true,
-  },
-  {
-    id: "m2",
-    from: "QCU MSC",
-    subject: "Tips for a great application",
-    preview: "A few pointers that help applications stand out during review.",
-    date: "Jun 22, 2026",
-    unread: false,
-  },
-  {
-    id: "m3",
-    from: "M&D Team",
-    subject: "Your documents are under review",
-    preview: "We've received your application materials and are scanning them now.",
-    date: "Jun 23, 2026",
-    unread: true,
-  },
-  {
-    id: "m4",
-    from: "QCU MSC",
-    subject: "Interview scheduling is now open",
-    preview: "Select your preferred slot for the next phase of the mission selection process.",
-    date: "Jun 24, 2026",
-    unread: true,
-  },
-  {
-    id: "m5",
-    from: "M&D Team",
-    subject: "Mission briefing packet attached",
-    preview: "Review the attached protocol before your scheduled orientation session.",
-    date: "Jun 25, 2026",
-    unread: false,
-  },
-  {
-    id: "m6",
-    from: "QCU MSC",
-    subject: "Final selection results incoming",
-    preview: "Stay tuned — the crew roster will be transmitted within 48 hours.",
-    date: "Jun 26, 2026",
-    unread: true,
-  },
-  {
-    id: "m7",
-    from: "M&D Team",
-    subject: "Crew clearance — next steps",
-    preview: "Congratulations! Here is everything you need to prepare for lift-off.",
-    date: "Jun 27, 2026",
-    unread: false,
-  },
-  {
-    id: "m8",
-    from: "QCU MSC",
-    subject: "Equipment checklist due",
-    preview: "Please confirm your gear manifest before the deadline this Friday.",
-    date: "Jun 28, 2026",
-    unread: true,
-  },
-  {
-    id: "m9",
-    from: "M&D Team",
-    subject: "Launch pad orientation invite",
-    preview: "You're invited to the pre-launch walkthrough at the campus grounds.",
-    date: "Jun 29, 2026",
-    unread: false,
-  },
-  {
-    id: "m10",
-    from: "QCU MSC",
-    subject: "Emergency contact form reminder",
-    preview: "Don't forget to update your next-of-kin details in the portal.",
-    date: "Jun 29, 2026",
-    unread: true,
-  },
-  {
-    id: "m11",
-    from: "M&D Team",
-    subject: "Weather advisory for launch week",
-    preview: "Current forecasts look stable — standby for daily updates from mission control.",
-    date: "Jun 29, 2026",
-    unread: false,
-  },
-  {
-    id: "m12",
-    from: "QCU MSC",
-    subject: "Post-mission survey now live",
-    preview: "Help us improve future missions by sharing your experience feedback.",
-    date: "Jun 30, 2026",
-    unread: false,
-  },
-];
-
 type Filter = "all" | "unread";
+
+const LOCAL_STORAGE_READ_KEY = "qcumsc.inbox.read";
+const LOCAL_STORAGE_DISMISSED_KEY = "qcumsc.inbox.dismissed";
 
 function InboxPage() {
   const user = usePortalUser();
   const navigate = useNavigate();
-  const [items, setItems] = useState(INBOX);
   const [filter, setFilter] = useState<Filter>("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [applicantData, setApplicantData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  // Initialize read and dismissed message IDs from localStorage
+  const [readIds, setReadIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_READ_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_DISMISSED_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const fetchApplicantData = async () => {
+      try {
+        const res = (await authClient.$fetch(
+          getApiEndpoint("/api/v1/applicants/me"),
+        )) as any;
+        if (res?.data?.success && res.data.data) {
+          setApplicantData(res.data.data);
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchApplicantData();
+  }, []);
 
   if (!user) {
     void navigate({ to: "/portal/login" });
     return null;
   }
 
+  // Purely dynamic notifications based on applicant submission and live admin status
+  const dynamicNotifications = useMemo(() => {
+    if (!applicantData) return [];
+    const list = [];
+
+    const submissionDateStr = applicantData.createdAt
+      ? new Date(applicantData.createdAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : "Today";
+
+    const updateDateStr = applicantData.updatedAt
+      ? new Date(applicantData.updatedAt).toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        })
+      : submissionDateStr;
+
+    // Notification 1: Automatic Greetings & Thank You for Submitting Notification
+    list.push({
+      id: `app-greeting-${applicantData.id}`,
+      from: "QCU MSC Mission Control",
+      subject: "Welcome & Thank You for Submitting Your Application!",
+      preview: `Hello ${
+        applicantData.firstName || "Applicant"
+      }! Thank you for applying to Quezon City University Microsoft Student Community. We have successfully registered your application details in our database.`,
+      date: submissionDateStr,
+      unread: true,
+    });
+
+    // Notification 2: Application Status Update / Under Review Notification
+    if (applicantData.status === "PENDING_REVIEW") {
+      list.push({
+        id: `app-status-review-${applicantData.id}`,
+        from: "Management & Development",
+        subject: "Application Status: Under Review",
+        preview: applicantData.manual_application
+          ? "Your application materials were received and flagged for manual review by our Management & Development team. We are currently verifying your credentials."
+          : "Your application is currently undergoing evaluation by our Management & Development team. We will transmit updates here as review progresses.",
+        date: submissionDateStr,
+        unread: true,
+      });
+    } else if (applicantData.status === "RESUBMIT") {
+      list.push({
+        id: `app-status-resubmit-${applicantData.id}-${applicantData.updatedAt || "1"}`,
+        from: "Management & Development",
+        subject: "Action Required: Application Resubmission Request",
+        preview: applicantData.adminMessage
+          ? `Admin remark: "${applicantData.adminMessage}". Please update the requested fields in your Application Status page.`
+          : "Management & Development has requested corrections on your application. Please review the Tracking tab to resubmit.",
+        date: updateDateStr,
+        unread: true,
+      });
+    } else if (applicantData.status === "APPROVED") {
+      list.push({
+        id: `app-status-approved-${applicantData.id}-${applicantData.updatedAt || "1"}`,
+        from: "QCU MSC Base Command",
+        subject: "Official Notice: Application Approved!",
+        preview: applicantData.adminMessage
+          ? `Admin remark: "${applicantData.adminMessage}". Welcome aboard to the QCU MSC crew!`
+          : "Congratulations! Your application to Quezon City University Microsoft Student Community has been reviewed and approved.",
+        date: updateDateStr,
+        unread: true,
+      });
+    } else if (applicantData.status === "REJECTED") {
+      list.push({
+        id: `app-status-rejected-${applicantData.id}-${applicantData.updatedAt || "1"}`,
+        from: "Management & Development",
+        subject: "Application Decision Notice",
+        preview: applicantData.adminMessage
+          ? `Admin remark: "${applicantData.adminMessage}"`
+          : "Thank you for applying. Your application decision status has been updated.",
+        date: updateDateStr,
+        unread: true,
+      });
+    }
+
+    return list;
+  }, [applicantData]);
+
+  // Derive message list with dynamic unread status based on readIds and dismissedIds
+  const items = dynamicNotifications
+    .filter((m) => !dismissedIds.includes(m.id))
+    .map((m) => ({
+      ...m,
+      unread: readIds.includes(m.id) ? false : m.unread,
+    }));
+
   const unreadCount = items.filter((m) => m.unread).length;
 
-  const visible = useMemo(() => {
-    if (filter === "unread") return items.filter((m) => m.unread);
-    return items;
-  }, [items, filter]);
+  const visible = items.filter((m) => {
+    if (filter === "unread") return m.unread;
+    return true;
+  });
 
   const markAllRead = () => {
-    setItems((prev) => prev.map((m) => ({ ...m, unread: false })));
+    const allIds = Array.from(
+      new Set([...readIds, ...dynamicNotifications.map((m) => m.id)]),
+    );
+    setReadIds(allIds);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_READ_KEY, JSON.stringify(allIds));
+    } catch {
+      /* ignore */
+    }
   };
 
-  const dismiss = (id: string) => {
-    setItems((prev) => prev.filter((m) => m.id !== id));
+  const markAsRead = (id: string) => {
+    if (!readIds.includes(id)) {
+      const updated = [...readIds, id];
+      setReadIds(updated);
+      try {
+        localStorage.setItem(LOCAL_STORAGE_READ_KEY, JSON.stringify(updated));
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    markAsRead(id);
+    setSelectedId((prev) => (prev === id ? null : id));
+  };
+
+  const dismiss = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = [...dismissedIds, id];
+    setDismissedIds(updated);
+    try {
+      localStorage.setItem(LOCAL_STORAGE_DISMISSED_KEY, JSON.stringify(updated));
+    } catch {
+      /* ignore */
+    }
+    if (selectedId === id) setSelectedId(null);
   };
 
   return (
@@ -182,8 +251,15 @@ function InboxPage() {
           )}
         </div>
 
-        {/* Compact list */}
-        {visible.length === 0 ? (
+        {/* List content */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="size-6 animate-spin rounded-full border-2 border-brand-blue-deep border-t-transparent mx-auto" />
+            <p className="mt-3 font-body text-xs text-brand-blue-deep/60">
+              Retrieving transmissions...
+            </p>
+          </div>
+        ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center">
             <Satellite className="size-10 text-brand-blue-deep/25" />
             <p className="mt-3 font-display text-sm font-bold text-brand-blue-deep/60">
@@ -192,66 +268,76 @@ function InboxPage() {
           </div>
         ) : (
           <ul className="divide-y divide-brand-blue-deep/[0.08]">
-            {visible.map((m) => (
-              <li
-                key={m.id}
-                className={[
-                  "group flex items-start gap-3 py-3.5 transition hover:bg-brand-blue-deep/[0.02] sm:gap-4 sm:py-3",
-                  m.unread ? "" : "opacity-70",
-                ].join(" ")}
-              >
-                {/* Status dot */}
-                <div className="mt-1.5 shrink-0">
-                  {m.unread ? (
-                    <span className="block size-2 rounded-full bg-brand-orange" />
-                  ) : (
-                    <span className="block size-2 rounded-full bg-brand-blue-deep/20" />
-                  )}
-                </div>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span
-                      className={[
-                        "font-heading text-[11px] uppercase tracking-[0.15em]",
-                        m.unread
-                          ? "text-brand-blue-deep/70"
-                          : "text-brand-blue-deep/45",
-                      ].join(" ")}
-                    >
-                      {m.from}
-                    </span>
-                    <span className="font-body text-[10px] text-brand-blue-deep/35">
-                      {m.date}
-                    </span>
-                  </div>
-                  <div
-                    className={[
-                      "mt-0.5 truncate font-display text-sm",
-                      m.unread
-                        ? "font-bold text-brand-blue-deep"
-                        : "font-medium text-brand-blue-deep/60",
-                    ].join(" ")}
-                  >
-                    {m.subject}
-                  </div>
-                  <div className="mt-0.5 truncate font-body text-xs text-brand-blue-deep/55">
-                    {m.preview}
-                  </div>
-                </div>
-
-                {/* Dismiss */}
-                <button
-                  type="button"
-                  onClick={() => dismiss(m.id)}
-                  title="Dismiss transmission"
-                  className="mt-1 shrink-0 rounded-full p-1.5 text-brand-blue-deep/30 opacity-0 transition hover:bg-brand-blue-deep/10 hover:text-brand-blue-deep/70 group-hover:opacity-100"
+            {visible.map((m) => {
+              const isExpanded = selectedId === m.id;
+              return (
+                <li
+                  key={m.id}
+                  onClick={() => toggleSelect(m.id)}
+                  className={[
+                    "group cursor-pointer py-3.5 transition hover:bg-brand-blue-deep/[0.02] sm:py-3",
+                    m.unread ? "" : "opacity-75",
+                  ].join(" ")}
                 >
-                  <X className="size-3.5" />
-                </button>
-              </li>
-            ))}
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    {/* Status dot */}
+                    <div className="mt-1.5 shrink-0">
+                      {m.unread ? (
+                        <span className="block size-2 rounded-full bg-brand-orange" />
+                      ) : (
+                        <span className="block size-2 rounded-full bg-brand-blue-deep/20" />
+                      )}
+                    </div>
+
+                    {/* Content */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                        <span
+                          className={[
+                            "font-heading text-[11px] uppercase tracking-[0.15em]",
+                            m.unread
+                              ? "text-brand-blue-deep/70 font-semibold"
+                              : "text-brand-blue-deep/45",
+                          ].join(" ")}
+                        >
+                          {m.from}
+                        </span>
+                        <span className="font-body text-[10px] text-brand-blue-deep/35">
+                          {m.date}
+                        </span>
+                      </div>
+                      <div
+                        className={[
+                          "mt-0.5 font-display text-sm",
+                          m.unread
+                            ? "font-bold text-brand-blue-deep"
+                            : "font-medium text-brand-blue-deep/70",
+                        ].join(" ")}
+                      >
+                        {m.subject}
+                      </div>
+                      <div className="mt-0.5 font-body text-xs text-brand-blue-deep/65">
+                        {isExpanded ? (
+                          m.preview
+                        ) : (
+                          <span className="truncate block">{m.preview}</span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Dismiss */}
+                    <button
+                      type="button"
+                      onClick={(e) => dismiss(e, m.id)}
+                      title="Dismiss transmission"
+                      className="mt-1 shrink-0 rounded-full p-1.5 text-brand-blue-deep/30 opacity-0 transition hover:bg-brand-blue-deep/10 hover:text-brand-blue-deep/70 group-hover:opacity-100"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </PortalCard>
