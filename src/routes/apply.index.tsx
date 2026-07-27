@@ -436,7 +436,6 @@ function ApplyPage() {
     setProvisionalIdFile(payload.fullIdImageFile);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(URL.createObjectURL(payload.fullIdImageFile));
-    setStage("confirm");
     setOcrError(null);
     setOcrLoading(true);
 
@@ -448,8 +447,9 @@ function ApplyPage() {
       const json = await res.json();
 
       if (res.ok && json.success) {
+        setStage("confirm");
         setOcrSessionId(json.data.ocrSessionId);
-        setManualRequired(json.data.manualRequired);
+        setManualRequired(false);
 
         // Pre-fill
         setConfirmStudentId(json.data.studentId || "");
@@ -472,26 +472,23 @@ function ApplyPage() {
           .replace(/\s+/g, " ");
         setForm((f) => ({ ...f, fullName: formattedName }));
       } else {
-        if (json.data && json.data.manualRequired) {
-          setOcrSessionId(json.data.ocrSessionId);
-          setManualRequired(true);
-          setConfirmStudentId("");
-          setConfirmLastName("");
-          setConfirmFirstName("");
-          setConfirmMiddleInitial("");
-          setDigitCorrectedInName(false);
-          setOcrError(json.message || "Unable to read Student ID. Manual entry required.");
-        } else {
-          throw new Error(json.message || "Could not read ID.");
-        }
+        setStage("confirm");
+        setOcrSessionId(json.data?.ocrSessionId || null);
+        setManualRequired(!!json.data?.manualRequired);
+        setConfirmStudentId(json.data?.studentId || "");
+        setConfirmLastName(json.data?.lastName || "");
+        setConfirmFirstName(json.data?.firstName || "");
+        setConfirmMiddleInitial(json.data?.middleInitial || "");
+        setDigitCorrectedInName(false);
+        setOcrError(json.message || "Could not read Student ID. Please re-scan your ID card.");
       }
     } catch (err) {
+      setStage("confirm");
       setOcrError(
         err instanceof Error
           ? err.message
-          : "We couldn't read your ID automatically. You can type the details in.",
+          : "We couldn't process your ID image. Please re-scan your ID card.",
       );
-      setManualRequired(true); // Fallback to manual if API is down
     } finally {
       setOcrLoading(false);
     }
@@ -528,29 +525,22 @@ function ApplyPage() {
       email: confirmEmail.trim(),
     }));
     setStage("form");
-    setIdx(0);
+    setFormStep(1);
+    setStepErrors({});
+    setError(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const total = flowQuestions.length;
-  const onReview = false;
-  const q = flowQuestions[Math.min(idx, total - 1)];
-  const progress = useMemo(
-    () => (submitted ? 100 : Math.round((idx / total) * 100)),
-    [idx, total, submitted],
-  );
+  const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
+  const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
-    if (
-      q &&
-      (q.kind === "text" || q.kind === "email" || q.kind === "tel" || q.kind === "textarea")
-    ) {
-      inputRef.current?.focus();
-    }
-  }, [idx, q]);
+  const progress = useMemo(() => {
+    if (submitted) return 100;
+    if (stage !== "form") return 0;
+    return Math.round((formStep / 3) * 100);
+  }, [stage, formStep, submitted]);
 
   const update = (key: keyof FormState, value: string, file?: File) => {
-    // If college changes, clear program
     if (key === "college") {
       setForm((f) => ({ ...f, [key]: value, program: "" }));
     } else {
@@ -558,34 +548,134 @@ function ApplyPage() {
     }
     if (file) setFiles((prev) => ({ ...prev, [key]: file }));
     setError(null);
+    setStepErrors((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
   };
 
-  const goNext = () => {
-    if (!q) return;
-    const v = String(form[q.key] ?? "");
+  const validateStep1 = () => {
+    const errs: Record<string, string> = {};
+    if (!form.dateOfBirth) errs.dateOfBirth = "Please select your date of birth.";
+    if (!form.placeOfBirth.trim()) errs.placeOfBirth = "Place of birth is required.";
+    if (!form.gender) errs.gender = "Please select your gender identification.";
+    const cellErr = validCellphone(form.cellphone);
+    if (cellErr) errs.cellphone = cellErr;
+    if (!form.houseAddress.trim()) errs.houseAddress = "House address is required.";
+    const fbErr = validFacebookUrl(form.facebookLink);
+    if (fbErr) errs.facebookLink = fbErr;
+    return errs;
+  };
 
-    if (q.optional && !v.trim()) {
-      // Optional and empty is fine
-    } else if (q.validate) {
-      const msg = q.validate(v);
-      if (msg) {
-        setError(msg);
+  const validateStep2 = () => {
+    const errs: Record<string, string> = {};
+    if (!form.college) errs.college = "Please select your college.";
+    if (!form.program) errs.program = "Please select your program.";
+    if (!form.section.trim()) errs.section = "Section is required (e.g. 3A).";
+    if (!form.campus) errs.campus = "Please select your campus.";
+    if (!form.role) errs.role = "Please select your preferred office.";
+
+    if (!files.certificateOfRegistration)
+      errs.certificateOfRegistration = "Certificate of Registration (COR) is required.";
+    if (!files.curriculumVitae)
+      errs.curriculumVitae = "Curriculum Vitae (CV) is required.";
+    return errs;
+  };
+
+  const validateStep3 = () => {
+    const errs: Record<string, string> = {};
+    if (!form.interests.trim()) errs.interests = "Please share your interests and skills.";
+    if (!form.pastOrganizations.trim()) errs.pastOrganizations = "Please specify past organizations (or N/A).";
+    if (form.portfolio.trim()) {
+      const pErr = validUrl(form.portfolio);
+      if (pErr) errs.portfolio = pErr;
+    }
+    if (form.githubOrProjects.trim()) {
+      const gErr = validGitHubOrDriveUrl(form.githubOrProjects);
+      if (gErr) errs.githubOrProjects = gErr;
+    }
+    return errs;
+  };
+
+  const goToStep = (targetStep: 1 | 2 | 3) => {
+    if (targetStep === formStep) return;
+    if (targetStep < formStep) {
+      setStepErrors({});
+      setError(null);
+      setFormStep(targetStep);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    if (formStep === 1) {
+      const errs = validateStep1();
+      if (Object.keys(errs).length > 0) {
+        setStepErrors(errs);
+        setError("Please complete all required fields in Step 1 before advancing.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+    } else if (formStep === 2) {
+      const errs = validateStep2();
+      if (Object.keys(errs).length > 0) {
+        setStepErrors(errs);
+        setError("Please complete all required fields in Step 2 before advancing.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
     }
+    setStepErrors({});
     setError(null);
-    if (idx === total - 1) {
-      submit();
-      return;
-    }
-    setIdx((i) => Math.min(total - 1, i + 1));
+    setFormStep(targetStep);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const goBack = () => {
+  const goNextStep = () => {
+    if (formStep === 1) {
+      const errs = validateStep1();
+      if (Object.keys(errs).length > 0) {
+        setStepErrors(errs);
+        setError("Please complete all required fields in Step 1.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      setStepErrors({});
+      setError(null);
+      setFormStep(2);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (formStep === 2) {
+      const errs = validateStep2();
+      if (Object.keys(errs).length > 0) {
+        setStepErrors(errs);
+        setError("Please complete all required academic, document, and background fields in Step 2.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      setStepErrors({});
+      setError(null);
+      setFormStep(3);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } else if (formStep === 3) {
+      const errs = validateStep3();
+      if (Object.keys(errs).length > 0) {
+        setStepErrors(errs);
+        setError("Please fix the invalid links before submitting.");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+      setStepErrors({});
+      setError(null);
+      submit();
+    }
+  };
+
+  const goBackStep = () => {
+    setStepErrors({});
     setError(null);
-    setIdx((i) => Math.max(0, i - 1));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    if (formStep > 1) {
+      setFormStep((s) => (s - 1) as 1 | 2 | 3);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   const submit = async () => {
@@ -594,15 +684,11 @@ function ApplyPage() {
       const fd = new FormData();
 
       let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
-      if (cleanMI) {
-        cleanMI = cleanMI + ".";
-      }
+      if (cleanMI) cleanMI = cleanMI + ".";
 
       fd.append("firstName", confirmFirstName.trim());
       fd.append("lastName", confirmLastName.trim());
-      if (cleanMI) {
-        fd.append("middleInitial", cleanMI);
-      }
+      if (cleanMI) fd.append("middleInitial", cleanMI);
       fd.append("email", form.email);
       fd.append("college", form.college);
       fd.append("program", form.program);
@@ -639,13 +725,9 @@ function ApplyPage() {
       if (manualRequired) fd.append("studentId", form.studentId);
 
       if (!files.certificateOfRegistration)
-        throw new Error(
-          `Please re-select your Certificate of Registration file. Debug memory: ${Object.keys(files).join(", ") || "none"}`,
-        );
+        throw new Error("Please re-select your Certificate of Registration file.");
       if (!files.curriculumVitae)
-        throw new Error(
-          `Please re-select your Curriculum Vitae file. Debug memory: ${Object.keys(files).join(", ") || "none"}`,
-        );
+        throw new Error("Please re-select your Curriculum Vitae file.");
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
@@ -668,18 +750,14 @@ function ApplyPage() {
       setRedirectingToAccount(true);
       try {
         let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
-        if (cleanMI) {
-          cleanMI = cleanMI + ".";
-        }
+        if (cleanMI) cleanMI = cleanMI + ".";
         sessionStorage.setItem(
           "qcumsc.applicant",
           JSON.stringify({
-            applicantId: json.data?.id || json.data?.applicantId,
-            studentId: manualRequired ? form.studentId : json.data?.studentId || form.studentId,
-            fullName: form.fullName,
+            applicantId: json.data?.id,
             email: form.email,
-            role: form.role,
-            provisional: manualRequired,
+            studentId: form.studentId,
+            fullName: form.fullName,
             firstName: confirmFirstName.trim(),
             lastName: confirmLastName.trim(),
             middleInitial: cleanMI,
@@ -693,7 +771,6 @@ function ApplyPage() {
       });
     } catch (err: any) {
       setError(err.message || "An error occurred during submission.");
-      setIdx(total - 1);
       setSubmitted(false);
     }
   };
@@ -701,7 +778,8 @@ function ApplyPage() {
   const reset = () => {
     setForm(INITIAL);
     setError(null);
-    setIdx(0);
+    setStepErrors({});
+    setFormStep(1);
     setSubmitted(false);
     setProvisionalIdFile(null);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
@@ -715,33 +793,13 @@ function ApplyPage() {
     setStage("scan");
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && q && q.kind !== "textarea") {
-      e.preventDefault();
-      goNext();
-    }
-  };
-
-  // Chapter intro: show greeting only on the first question of a chapter
-  const isChapterStart = q !== null && (idx === 0 || flowQuestions[idx - 1].chapter !== q.chapter);
-
-  if (!clientReady) {
-    return <ApplyBootScreen />;
-  }
-
-  if (redirectingToAccount) {
-    return <AccountRedirectScreen />;
-  }
+  if (!clientReady) return <ApplyBootScreen />;
+  if (redirectingToAccount) return <AccountRedirectScreen />;
 
   return (
-    <div
-      className="relative min-h-screen overflow-hidden"
-      style={{ background: "var(--gradient-space)" }}
-    >
+    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
       <SkyBackdrop variant="space" />
       <PlanetsField />
-
-      {/* Header */}
       <header className="relative z-20 mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-5 sm:px-8">
         <Link to="/" className="flex min-w-0 items-center gap-2.5">
           <img src={logoUrl} alt="QCU MSC logo" className="size-9 shrink-0 object-contain" />
@@ -755,10 +813,7 @@ function ApplyPage() {
             </div>
           </div>
         </Link>
-        <Link
-          to="/"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-brand-blue-deep shadow-md hover:bg-white sm:px-4 sm:text-sm"
-        >
+        <Link to="/" className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-brand-blue-deep shadow-md hover:bg-white sm:px-4 sm:text-sm">
           <ArrowLeft className="size-4" /> Back to Space
         </Link>
       </header>
@@ -766,31 +821,10 @@ function ApplyPage() {
       <main className="relative z-10 mx-auto max-w-7xl px-4 pb-24 sm:px-8">
         {stage === "scan" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-            <MissionPanel
-              eyebrow="Pre-flight check"
-              title={
-                <>
-                  Verify your
-                  <br />
-                  <span className="text-brand-orange">student orbit</span>
-                </>
-              }
-              subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet."
-              stats={[
-                { label: "Step", value: "00" },
-                { label: "Phase", value: "ID Scan" },
-                { label: "Range", value: "On-device" },
-              ]}
-            />
+            <MissionPanel eyebrow="Pre-flight check" title={<>Verify your<br /><span className="text-brand-orange">student orbit</span></>} subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet." stats={[{ label: "Step", value: "00" }, { label: "Phase", value: "ID Scan" }, { label: "Range", value: "On-device" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
-                <Suspense
-                  fallback={
-                    <div className="grid h-72 place-items-center text-sm text-white/70">
-                      Preparing on-device scanner…
-                    </div>
-                  }
-                >
+                <Suspense fallback={<div className="grid h-72 place-items-center text-sm text-white/70">Preparing on-device scanner…</div>}>
                   <IdUploadScanner onSubmit={handleScanComplete} />
                 </Suspense>
               </div>
@@ -798,183 +832,519 @@ function ApplyPage() {
           </div>
         ) : stage === "confirm" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-            <MissionPanel
-              eyebrow="Confirm identity"
-              title={
-                <>
-                  Double-check your
-                  <br />
-                  <span className="text-brand-orange">ID details</span>
-                </>
-              }
-              subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email."
-              stats={[
-                { label: "Step", value: "01" },
-                { label: "Phase", value: "Verify" },
-                { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" },
-              ]}
-            />
+            <MissionPanel eyebrow="Confirm identity" title={<>Double-check your<br /><span className="text-brand-orange">ID details</span></>} subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email." stats={[{ label: "Step", value: "01" }, { label: "Phase", value: "Verify" }, { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
-                <ConfirmIdStep
-                  preview={provisionalIdPreview}
-                  loading={ocrLoading}
-                  error={ocrError}
-                  studentId={confirmStudentId}
-                  lastName={confirmLastName}
-                  firstName={confirmFirstName}
-                  middleInitial={confirmMiddleInitial}
-                  digitCorrected={digitCorrectedInName}
-                  email={confirmEmail}
-                  onStudentId={setConfirmStudentId}
-                  onLastName={setConfirmLastName}
-                  onFirstName={setConfirmFirstName}
-                  onMiddleInitial={setConfirmMiddleInitial}
-                  onEmail={setConfirmEmail}
-                  isManual={manualRequired}
-                  onBack={() => {
-                    setStage("scan");
-                  }}
-                  onContinue={confirmAndStart}
-                />
+                <ConfirmIdStep preview={provisionalIdPreview} loading={ocrLoading} error={ocrError} studentId={confirmStudentId} lastName={confirmLastName} firstName={confirmFirstName} middleInitial={confirmMiddleInitial} digitCorrected={digitCorrectedInName} email={confirmEmail} onStudentId={setConfirmStudentId} onLastName={setConfirmLastName} onFirstName={setConfirmFirstName} onMiddleInitial={setConfirmMiddleInitial} onEmail={setConfirmEmail} isManual={manualRequired} onBack={() => { setOcrError(null); setStage("scan"); }} onContinue={confirmAndStart} />
               </div>
             </div>
           </div>
         ) : submitted ? (
           <SuccessCard onReset={reset} />
         ) : (
-          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
+          <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr] lg:gap-12">
             <MissionPanel
-              eyebrow={onReview ? "Final review" : q!.chapter}
+              eyebrow={
+                formStep === 1
+                  ? "Step 1 of 3 · Personal & Academic"
+                  : formStep === 2
+                  ? "Step 2 of 3 · Documents & Experience"
+                  : "Step 3 of 3 · Portfolio & Achievements"
+              }
               title={
-                onReview ? (
+                formStep === 1 ? (
                   <>
-                    One last
-                    <br />
-                    <span className="text-brand-orange">orbital check</span>
+                    Personal &amp;<br />
+                    <span className="text-brand-orange">Academic Profile</span>
+                  </>
+                ) : formStep === 2 ? (
+                  <>
+                    Documents &amp;<br />
+                    <span className="text-brand-orange">Background</span>
                   </>
                 ) : (
                   <>
-                    Travel the
-                    <br />
-                    <span className="text-brand-orange">QCU MSC</span>
+                    Showcase &amp;<br />
+                    <span className="text-brand-orange">Optional Links</span>
                   </>
                 )
               }
               subtitle={
-                onReview
-                  ? "Scan every coordinate before we launch your application toward Mission Control."
-                  : "One quick question at a time. We're charting your route across the constellation — no pressure."
+                formStep === 1
+                  ? "Provide your contact information, address, academic details, and preferred department role."
+                  : formStep === 2
+                  ? "Upload your current Certificate of Registration and CV, and share your skills and background."
+                  : "Include your portfolio or GitHub links if you have any. This step is completely optional."
               }
               stats={[
-                {
-                  label: "Question",
-                  value: onReview ? `${total}/${total}` : `${idx + 1}/${total}`,
-                },
+                { label: "Step", value: `0${formStep}/03` },
                 { label: "Progress", value: `${progress}%` },
-                { label: "Heading", value: onReview ? "Review" : "Forward" },
+                {
+                  label: "Phase",
+                  value: formStep === 1 ? "Profile" : formStep === 2 ? "Documents" : "Showcase",
+                },
               ]}
               progress={progress}
             />
 
-            <div className="lg:pt-6">
-              <div
-                key={idx}
-                className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-10 animate-in fade-in slide-in-from-bottom-2 duration-300"
-              >
-                {onReview ? (
-                  <ReviewStep
-                    form={form}
-                    onEdit={(key) => {
-                      const i = flowQuestions.findIndex((x) => x.key === key);
-                      if (i >= 0) setIdx(i);
-                    }}
-                  />
-                ) : (
-                  <div className="space-y-6" onKeyDown={onKeyDown}>
-                    {isChapterStart && q!.greeting && (
-                      <p className="font-body text-sm italic text-brand-blue-deep/70">
-                        {q!.greeting}
-                      </p>
-                    )}
-                    <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
-                      {q!.prompt}
-                      {q!.optional && (
-                        <span className="ml-2 align-middle text-xs font-semibold uppercase tracking-[0.18em] text-brand-blue-deep/50">
-                          optional
-                        </span>
-                      )}
-                    </h2>
+            <div className="lg:pt-4">
+              <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                {/* Section Navigation Header Tabs */}
+                <div className="mb-6 flex flex-wrap items-center justify-between gap-2 border-b border-brand-blue-deep/10 pb-4">
+                  {[
+                    { step: 1, label: "1. Personal & Contact" },
+                    { step: 2, label: "2. Academics" },
+                    { step: 3, label: "3. Experience & Showcase" },
+                  ].map((s) => (
+                    <button
+                      key={s.step}
+                      type="button"
+                      onClick={() => goToStep(s.step as 1 | 2 | 3)}
+                      className={[
+                        "flex-1 min-w-[120px] rounded-xl py-2 px-3 text-center font-heading text-xs font-bold transition-all",
+                        formStep === s.step
+                          ? "bg-brand-blue-deep text-white shadow-md ring-2 ring-brand-orange/40"
+                          : "bg-brand-blue-deep/10 text-brand-blue-deep hover:bg-brand-blue-deep/20 cursor-pointer",
+                      ].join(" ")}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
 
-                    <QuestionInput
-                      q={q!}
-                      value={String(form[q!.key] ?? "")}
-                      onChange={(v, f) => update(q!.key, v, f)}
-                      inputRef={inputRef}
-                      form={form}
-                    />
-
-                    {q!.helper && !error && (
-                      <p className="text-xs text-brand-blue-deep/60">{q!.helper}</p>
-                    )}
-                    {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+                {error && (
+                  <div className="mb-6 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-semibold text-red-600">
+                    {error}
                   </div>
                 )}
 
-                {/* Nav */}
-                <div className="mt-8 flex items-center justify-between gap-3 border-t border-white/60 pt-6">
-                  {idx > 0 ? (
+                {/* Step 1: Personal & Contact Info */}
+                {formStep === 1 && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-heading text-xs font-extrabold uppercase tracking-[0.18em] text-brand-orange">
+                        Personal &amp; Contact Info
+                      </h3>
+                      <p className="mt-1 font-display text-lg font-bold text-brand-blue-deep">
+                        Basic details to get in touch
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Date of Birth *
+                        </label>
+                        <Input
+                          type="date"
+                          max="2008-12-31"
+                          value={form.dateOfBirth}
+                          onChange={(e) => update("dateOfBirth", e.target.value)}
+                        />
+                        {stepErrors.dateOfBirth && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.dateOfBirth}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Place of Birth *
+                        </label>
+                        <Input
+                          placeholder="e.g. Quezon City"
+                          value={form.placeOfBirth}
+                          onChange={(e) => update("placeOfBirth", e.target.value)}
+                        />
+                        {stepErrors.placeOfBirth && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.placeOfBirth}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Gender *
+                        </label>
+                        <Select value={form.gender} onValueChange={(v) => update("gender", v)}>
+                          <SelectTrigger className="w-full bg-white/80">
+                            <SelectValue placeholder="Select gender identification" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {["Male", "Female", "LGBTQIA+", "Prefer not to say"].map((g) => (
+                              <SelectItem key={g} value={g}>
+                                {g}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {stepErrors.gender && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.gender}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Cellphone Number (11 digits) *
+                        </label>
+                        <Input
+                          type="tel"
+                          maxLength={11}
+                          placeholder="09123456789"
+                          value={form.cellphone}
+                          onChange={(e) => {
+                            const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 11);
+                            update("cellphone", digitsOnly);
+                          }}
+                        />
+                        {stepErrors.cellphone && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.cellphone}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        House Address *
+                      </label>
+                      <Textarea
+                        rows={2}
+                        placeholder="Block / Lot, Street, Barangay, City"
+                        value={form.houseAddress}
+                        onChange={(e) => update("houseAddress", e.target.value)}
+                      />
+                      {stepErrors.houseAddress && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.houseAddress}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        Facebook Profile Link *
+                      </label>
+                      <Input
+                        placeholder="https://facebook.com/your.profile"
+                        value={form.facebookLink}
+                        onChange={(e) => update("facebookLink", e.target.value)}
+                      />
+                      {stepErrors.facebookLink && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.facebookLink}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 2: Academics, Documents & Experience */}
+                {formStep === 2 && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-heading text-xs font-extrabold uppercase tracking-[0.18em] text-brand-orange">
+                        Academics &amp; Preferred Office
+                      </h3>
+                      <p className="mt-1 font-display text-lg font-bold text-brand-blue-deep">
+                        School program &amp; team preference
+                      </p>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          College *
+                        </label>
+                        <Select value={form.college} onValueChange={(v) => update("college", v)}>
+                          <SelectTrigger className="w-full bg-white/80">
+                            <SelectValue placeholder="Select college" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.keys(COLLEGE_PROGRAMS).map((c) => (
+                              <SelectItem key={c} value={c}>
+                                {c}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {stepErrors.college && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.college}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Program *
+                        </label>
+                        <Select
+                          disabled={!form.college}
+                          value={form.program}
+                          onValueChange={(v) => update("program", v)}
+                        >
+                          <SelectTrigger className="w-full bg-white/80">
+                            <SelectValue placeholder={form.college ? "Select program" : "Select college first"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {(COLLEGE_PROGRAMS[form.college] || []).map((p) => (
+                              <SelectItem key={p} value={p}>
+                                {p}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {stepErrors.program && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.program}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Section *
+                        </label>
+                        <Input
+                          placeholder="e.g. 3A"
+                          value={form.section}
+                          onChange={(e) => update("section", e.target.value)}
+                        />
+                        {stepErrors.section && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.section}</p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Campus *
+                        </label>
+                        <Select value={form.campus} onValueChange={(v) => update("campus", v)}>
+                          <SelectTrigger className="w-full bg-white/80">
+                            <SelectValue placeholder="Select QCU campus" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {["San Bartolome (Main)", "San Francisco", "Batasan"].map((camp) => (
+                              <SelectItem key={camp} value={camp}>
+                                {camp}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {stepErrors.campus && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.campus}</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        Preferred Office *
+                      </label>
+                      <Select value={form.role} onValueChange={(v) => update("role", v)}>
+                        <SelectTrigger className="w-full bg-white/80">
+                          <SelectValue placeholder="Select preferred office" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[
+                            "Engineering / Development",
+                            "Design & Creatives",
+                            "Marketing & Communications",
+                            "Operations & Logistics",
+                            "Research & Curriculum",
+                            "General Member",
+                          ].map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {r}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {stepErrors.role && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.role}</p>
+                      )}
+                    </div>
+
+                    <div className="pt-4 border-t border-brand-blue-deep/10">
+                      <h3 className="font-heading text-xs font-extrabold uppercase tracking-[0.18em] text-brand-orange">
+                        Required Documents
+                      </h3>
+                      <p className="mt-1 font-display text-lg font-bold text-brand-blue-deep">
+                        Upload your verification files
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Certificate of Registration (COR) *
+                        </label>
+                        <Input
+                          type="file"
+                          accept=".pdf,.docx,.jpg,.jpeg,.png"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) update("certificateOfRegistration", f.name, f);
+                          }}
+                        />
+                        {files.certificateOfRegistration && (
+                          <p className="mt-1 text-xs text-emerald-600 font-medium">
+                            Uploaded: {files.certificateOfRegistration.name}
+                          </p>
+                        )}
+                        {stepErrors.certificateOfRegistration && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">
+                            {stepErrors.certificateOfRegistration}
+                          </p>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                          Curriculum Vitae (CV) *
+                        </label>
+                        <Input
+                          type="file"
+                          accept=".pdf,.docx"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) update("curriculumVitae", f.name, f);
+                          }}
+                        />
+                        {files.curriculumVitae && (
+                          <p className="mt-1 text-xs text-emerald-600 font-medium">
+                            Uploaded: {files.curriculumVitae.name}
+                          </p>
+                        )}
+                        {stepErrors.curriculumVitae && (
+                          <p className="mt-1 text-xs text-red-600 font-medium">
+                            {stepErrors.curriculumVitae}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Step 3: Background Experience & Showcase */}
+                {formStep === 3 && (
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="font-heading text-xs font-extrabold uppercase tracking-[0.18em] text-brand-orange">
+                        Background &amp; Experience
+                      </h3>
+                      <p className="mt-1 font-display text-lg font-bold text-brand-blue-deep">
+                        Skills and community involvement
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        Interests, Skills &amp; Hobbies *
+                      </label>
+                      <Textarea
+                        rows={3}
+                        placeholder="e.g. Web development, UI design, photography, debate club…"
+                        value={form.interests}
+                        onChange={(e) => update("interests", e.target.value)}
+                      />
+                      {stepErrors.interests && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.interests}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        Past Organizations or Community Experience *
+                      </label>
+                      <Textarea
+                        rows={3}
+                        placeholder="Org name, your role, what you did… (type N/A if none)"
+                        value={form.pastOrganizations}
+                        onChange={(e) => update("pastOrganizations", e.target.value)}
+                      />
+                      {stepErrors.pastOrganizations && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.pastOrganizations}</p>
+                      )}
+                    </div>
+
+                    <div className="pt-4 border-t border-brand-blue-deep/10">
+                      <h3 className="font-heading text-xs font-extrabold uppercase tracking-[0.18em] text-brand-orange">
+                        Showcase &amp; Links (Optional)
+                      </h3>
+                      <p className="mt-1 font-display text-lg font-bold text-brand-blue-deep">
+                        Highlight your achievements
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        Portfolio Website Link (Optional)
+                      </label>
+                      <Input
+                        placeholder="https://your-portfolio.com"
+                        value={form.portfolio}
+                        onChange={(e) => update("portfolio", e.target.value)}
+                      />
+                      {stepErrors.portfolio && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.portfolio}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        GitHub or Project Links (Optional)
+                      </label>
+                      <Input
+                        placeholder="https://github.com/yourhandle"
+                        value={form.githubOrProjects}
+                        onChange={(e) => update("githubOrProjects", e.target.value)}
+                      />
+                      {stepErrors.githubOrProjects && (
+                        <p className="mt-1 text-xs text-red-600 font-medium">{stepErrors.githubOrProjects}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
+                        Previous Works &amp; Achievements (Optional)
+                      </label>
+                      <Textarea
+                        rows={3}
+                        placeholder="Hackathon wins, published projects, leadership achievements…"
+                        value={form.previousWorks}
+                        onChange={(e) => update("previousWorks", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Form Controls */}
+                <div className="mt-8 flex items-center justify-between gap-3 border-t border-brand-blue-deep/10 pt-6">
+                  {formStep > 1 ? (
                     <button
                       type="button"
-                      onClick={goBack}
+                      onClick={goBackStep}
                       className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white"
                     >
-                      <ArrowLeft className="size-4" /> Back to Space
+                      <ArrowLeft className="size-4" /> Previous Step
                     </button>
                   ) : (
                     <span />
                   )}
-                  <div className="flex items-center gap-2">
-                    {onReview ? (
-                      <button
-                        type="button"
-                        onClick={submit}
-                        className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
-                        style={{ background: "var(--gradient-cta)" }}
-                      >
+
+                  <button
+                    type="button"
+                    onClick={goNextStep}
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                    style={{ background: "var(--gradient-cta)" }}
+                  >
+                    {formStep === 3 ? (
+                      <>
                         Submit Application <Rocket className="size-4" />
-                      </button>
+                      </>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={goNext}
-                        className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
-                        style={{ background: "var(--gradient-cta)" }}
-                      >
-                        {idx === total - 1 ? (
-                          <>
-                            Submit Application <Rocket className="size-4" />
-                          </>
-                        ) : (
-                          <>
-                            Continue <ArrowRight className="size-4" />
-                          </>
-                        )}
-                      </button>
+                      <>
+                        Next Step <ArrowRight className="size-4" />
+                      </>
                     )}
-                  </div>
+                  </button>
                 </div>
               </div>
-
-              {!onReview && (
-                <p className="mt-4 hidden text-[11px] text-white/75 drop-shadow [@media(hover:hover)]:block">
-                  Press{" "}
-                  <kbd className="rounded bg-white/30 px-1.5 py-0.5 font-mono text-[10px]">
-                    Enter
-                  </kbd>{" "}
-                  to continue
-                </p>
-              )}
             </div>
           </div>
         )}
@@ -1366,8 +1736,10 @@ function ConfirmIdStep({
   onBack: () => void;
   onContinue: () => void;
 }) {
+  const canEditNameAndContinue = isManual || !!studentId.trim();
+
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 animate-in fade-in duration-300">
       <div>
         <h3 className="font-display text-lg font-bold text-brand-blue-deep">
           Confirm your ID details
@@ -1378,11 +1750,11 @@ function ConfirmIdStep({
       </div>
 
       {preview && (
-        <div className="overflow-hidden rounded-2xl border-2 border-brand-blue-light bg-white">
+        <div className="relative overflow-hidden rounded-xl border border-white/50 bg-black/40 shadow-inner">
           <img
             src={preview}
-            alt="Captured QCU ID"
-            className="mx-auto block aspect-[3/4] w-full max-w-[240px] object-cover"
+            alt="Uploaded QCU Student ID preview"
+            className="h-44 w-full object-contain"
           />
         </div>
       )}
@@ -1399,7 +1771,7 @@ function ConfirmIdStep({
             value={studentId}
             onChange={(e) => onStudentId(e.target.value)}
             placeholder={loading ? "Auto-filling…" : "e.g. 23-1234"}
-            disabled={loading || !isManual}
+            disabled={loading || (!isManual && !!studentId)}
             className="h-12 bg-white/85 text-base disabled:opacity-80"
           />
         </label>
@@ -1416,8 +1788,8 @@ function ConfirmIdStep({
               value={lastName}
               onChange={(e) => onLastName(e.target.value)}
               placeholder={loading ? "Auto-filling…" : "Dela Cruz"}
-              disabled={loading}
-              className="h-12 bg-white/85 text-base"
+              disabled={loading || !canEditNameAndContinue}
+              className="h-12 bg-white/85 text-base disabled:opacity-60"
             />
           </label>
 
@@ -1432,8 +1804,8 @@ function ConfirmIdStep({
               value={firstName}
               onChange={(e) => onFirstName(e.target.value)}
               placeholder={loading ? "Auto-filling…" : "Juan"}
-              disabled={loading}
-              className="h-12 bg-white/85 text-base"
+              disabled={loading || !canEditNameAndContinue}
+              className="h-12 bg-white/85 text-base disabled:opacity-60"
             />
           </label>
 
@@ -1448,9 +1820,9 @@ function ConfirmIdStep({
               value={middleInitial}
               onChange={(e) => onMiddleInitial(e.target.value)}
               placeholder={loading ? "…" : "S"}
-              disabled={loading}
+              disabled={loading || !canEditNameAndContinue}
               maxLength={2}
-              className="h-12 bg-white/85 text-base text-center min-w-[3.5rem]"
+              className="h-12 bg-white/85 text-base text-center min-w-[3.5rem] disabled:opacity-60"
             />
           </label>
         </div>
@@ -1471,7 +1843,8 @@ function ConfirmIdStep({
             value={email}
             onChange={(e) => onEmail(e.target.value)}
             placeholder="you@gmail.com"
-            className="h-12 bg-white/85 text-base"
+            disabled={loading || !canEditNameAndContinue}
+            className="h-12 bg-white/85 text-base disabled:opacity-60"
           />
           <p className="mt-1 text-[11px] text-brand-blue-deep/60">
             Account password setup link and notifications will be delivered to this address.
@@ -1479,20 +1852,24 @@ function ConfirmIdStep({
         </label>
       </div>
 
-      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+      {error && (
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-semibold text-red-600">
+          {error}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/60 pt-5">
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-2 rounded-full border-2 border-brand-blue-light bg-white px-5 py-2.5 font-heading text-xs font-bold uppercase tracking-[0.15em] text-brand-blue-deep"
+          className="inline-flex items-center gap-2 rounded-full border-2 border-brand-blue-light bg-white px-5 py-2.5 font-heading text-xs font-bold uppercase tracking-[0.15em] text-brand-blue-deep hover:bg-brand-blue-light/10 transition"
         >
           <ArrowLeft className="size-4" /> Re-scan
         </button>
         <button
           type="button"
           onClick={onContinue}
-          disabled={loading}
+          disabled={loading || !canEditNameAndContinue}
           className="inline-flex items-center gap-2 rounded-full px-7 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: "var(--gradient-cta)" }}
         >
