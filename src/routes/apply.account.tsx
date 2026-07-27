@@ -284,7 +284,7 @@ function ApplyAccountPage() {
             </p>
 
             <p className="mt-3 max-w-md font-body text-sm text-white/70 drop-shadow">
-              Set a password for your verified QCU email. From the next screen forward, your applicant
+              Set a password for your verified personal email. From the next screen forward, your applicant
               dashboard will show every checkpoint as it lights up.
             </p>
 
@@ -324,14 +324,14 @@ function ApplyAccountPage() {
                   Create your cockpit account
                 </h2>
                 <p className="font-body text-sm text-brand-blue-deep/65">
-                  This is the same QCU email we just verified — no need to retype it.
+                  This is the personal email address linked to your application — no need to retype it.
                 </p>
               </div>
 
               <div className="mt-7 space-y-5">
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-                    <Mail className="size-4" /> Verified QCU email
+                    <Mail className="size-4" /> Verified personal email
                   </label>
                   <Input
                     type="email"
