@@ -120,9 +120,9 @@ type Question = {
 };
 
 const required = (v: string) => (v.trim() ? null : "This one's required to continue.");
-const emailQcu = (v: string) => {
-  if (!v.trim()) return "Please share your QCU email.";
-  if (!/^[^\s@]+@qcu\.edu\.ph$/i.test(v.trim())) return "Must be a valid @qcu.edu.ph email.";
+const validPersonalEmail = (v: string) => {
+  if (!v.trim()) return "Please share your personal email address.";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim())) return "Must be a valid email address (e.g., user@gmail.com).";
   return null;
 };
 const validCellphone = (v: string) => {
@@ -305,11 +305,11 @@ const QUESTIONS: Question[] = [
     key: "email",
     chapter: "Chapter 5 · How we'll reach you",
     greeting: "Great, switching gears — how do we get in touch?",
-    prompt: "What's your QCU email address?",
-    helper: "Must end with @qcu.edu.ph",
-    placeholder: "lastname.firstname@qcu.edu.ph",
+    prompt: "What's your personal email address?",
+    helper: "For account setup links & notifications (e.g., Gmail, Yahoo, Outlook)",
+    placeholder: "you@gmail.com",
     kind: "email",
-    validate: emailQcu,
+    validate: validPersonalEmail,
   },
   {
     key: "cellphone",
@@ -507,7 +507,7 @@ function ApplyPage() {
       setOcrError("Student number must be in YY-NNNN format (e.g., 23-1234).");
       return;
     }
-    const emailMsg = emailQcu(confirmEmail);
+    const emailMsg = validPersonalEmail(confirmEmail);
     if (emailMsg) {
       setOcrError(emailMsg);
       return;
@@ -1464,15 +1464,18 @@ function ConfirmIdStep({
 
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-            QCU Email
+            Personal Email (for notifications & password setup)
           </div>
           <Input
             type="email"
             value={email}
             onChange={(e) => onEmail(e.target.value)}
-            placeholder="lastname.firstname@qcu.edu.ph"
+            placeholder="you@gmail.com"
             className="h-12 bg-white/85 text-base"
           />
+          <p className="mt-1 text-[11px] text-brand-blue-deep/60">
+            Account password setup link and notifications will be delivered to this address.
+          </p>
         </label>
       </div>
 

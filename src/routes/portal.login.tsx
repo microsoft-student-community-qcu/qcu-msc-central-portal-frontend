@@ -219,13 +219,13 @@ function PortalLoginPage() {
             <form onSubmit={onSubmit} className="space-y-5 rounded-[28px] glass-strong p-6 sm:p-8">
               <div>
                 <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
-                  QCU email
+                  Email address
                 </label>
                 <Input
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                  placeholder="you@qcu.edu.ph"
+                  placeholder="you@example.com"
                   className="h-12 bg-white/85"
                 />
               </div>
