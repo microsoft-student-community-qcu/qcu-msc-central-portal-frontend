@@ -11,14 +11,13 @@ import {
   Instagram,
   Linkedin,
   Facebook,
-  Twitter,
-  Youtube,
   LayoutDashboard,
   LogOut,
   User as UserIcon,
   Menu,
   X,
 } from "lucide-react";
+import { FaTiktok } from "react-icons/fa";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import azureCommunityLogo from "../assets/images/partners/microsoft-azure-community-philippines.svg";
@@ -50,7 +49,8 @@ export const Route = createFileRoute("/")({
   component: Landing,
 });
 
-const COLLAB_EMAIL = "msc.collaborate@qcu.edu.ph";
+const COLLAB_EMAIL = "msc-qcu@outlook.com"; // General collaboration email
+const PARTNERSHIP_EMAIL = "mscqcurelations@outlook.com";
 
 type EventItem = {
   id: string;
@@ -62,7 +62,10 @@ type EventItem = {
   image?: string;
 };
 
-// Three most recent upcoming events. Drop `image` URLs in when photos are ready.
+// Set this to true to show "Coming Soon" design, false to show actual events
+const SHOW_COMING_SOON = true;
+
+// Static event data.
 const EVENTS: EventItem[] = [
   {
     id: "ai-launchpad",
@@ -104,6 +107,14 @@ const PARTNERS: Partner[] = [
   { name: "Common Ground Don Antonio", logo: commonGroundDonAntonio },
 ];
 
+// Social media links
+const SOCIAL_LINKS = {
+  instagram: "https://www.instagram.com/mscqcu?igsh=OGNiYWxzMTduZ2F4&utm_source=qr",
+  facebook: "https://www.facebook.com/share/1cMFPEUjRo/?mibextid=wwXIfr",
+  linkedin: "https://www.linkedin.com/company/microsoft-student-community-quezon-city-university/",
+  tiktok: "https://www.tiktok.com/@mscqcu?_r=1&_t=ZS-982xD8IfXj6",
+};
+
 function Landing() {
   return (
     <div
@@ -123,7 +134,6 @@ function Landing() {
 }
 
 /* ---------- Background ---------- */
-/* SkyBackdrop is shared from @/components/SkyBackdrop */
 
 function Cloud({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   return (
@@ -484,11 +494,7 @@ function Hero() {
           <div className="mt-9 flex flex-col gap-3 sm:flex-row" id="apply">
             <HeroApplyCTA />
             <a
-              href="#collaborate"
-              onClick={(e) => {
-                e.preventDefault();
-                scrollToSection("collaborate");
-              }}
+              href={`mailto:${COLLAB_EMAIL}?subject=Collaboration%20with%20QCU%20MSC`}
               className="inline-flex items-center justify-center gap-2 rounded-full bg-white/95 px-6 py-3.5 font-heading text-sm font-semibold text-brand-blue-deep shadow-lg transition hover:-translate-y-0.5 hover:bg-white"
             >
               Collaborate With Us
@@ -697,7 +703,7 @@ function CollaborateCard() {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(COLLAB_EMAIL);
+      await navigator.clipboard.writeText(PARTNERSHIP_EMAIL);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -723,7 +729,7 @@ function CollaborateCard() {
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <a
-          href={`mailto:${COLLAB_EMAIL}?subject=Collaboration%20with%20QCU%20MSC`}
+          href={`mailto:${PARTNERSHIP_EMAIL}?subject=Partnership%20with%20QCU%20MSC`}
           className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 font-heading text-sm font-semibold text-white shadow-lg"
           style={{ background: "var(--gradient-cta-alt)" }}
         >
@@ -750,6 +756,9 @@ function CollaborateCard() {
 
 /* ---------- Initiatives ---------- */
 function Initiatives() {
+  // If SHOW_COMING_SOON is true OR EVENTS array is empty, show the coming soon design
+  const showComingSoon = SHOW_COMING_SOON || EVENTS.length === 0;
+
   return (
     <section id="initiatives" className="relative mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 sm:flex sm:justify-between">
@@ -769,8 +778,8 @@ function Initiatives() {
         </Link>
       </div>
 
-      {EVENTS.length === 0 ? (
-        <EmptyEvents />
+      {showComingSoon ? (
+        <ComingSoonEvents />
       ) : (
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {EVENTS.slice(0, 3).map((e) => (
@@ -855,6 +864,57 @@ function EventCard({ event }: { event: EventItem }) {
   );
 }
 
+/* ---------- Coming Soon Events Layer ---------- */
+function ComingSoonEvents() {
+  return (
+    <div className="mt-8 overflow-hidden rounded-3xl glass-strong p-8 sm:p-12">
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="relative">
+          <div
+            className="absolute -inset-8 rounded-full blur-3xl opacity-30"
+            style={{ background: "var(--brand-orange)" }}
+          />
+          <div className="relative">
+            <h3 className="font-display text-3xl font-bold text-brand-blue-deep sm:text-4xl">
+              Coming Soon
+            </h3>
+            <div
+              className="mt-2 h-1 w-20 rounded-full mx-auto"
+              style={{ background: "var(--gradient-cta)" }}
+            />
+            <p className="mt-4 max-w-lg font-body text-sm text-brand-blue-deep/70">
+              Exciting initiatives are brewing for this semester! Follow our socials to be the first
+              to know when we launch.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <SocialPill
+                icon={<Instagram className="size-4" />}
+                label="Instagram"
+                href={SOCIAL_LINKS.instagram}
+              />
+              <SocialPill
+                icon={<Facebook className="size-4" />}
+                label="Facebook"
+                href={SOCIAL_LINKS.facebook}
+              />
+              <SocialPill
+                icon={<Linkedin className="size-4" />}
+                label="LinkedIn"
+                href={SOCIAL_LINKS.linkedin}
+              />
+              <SocialPill
+                icon={<FaTiktok className="size-4" />}
+                label="TikTok"
+                href={SOCIAL_LINKS.tiktok}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyEvents() {
   return (
     <div className="mt-8 overflow-hidden rounded-3xl glass-strong p-8 sm:p-12">
@@ -875,9 +935,21 @@ function EmptyEvents() {
             announcements.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <SocialPill icon={<Instagram className="size-4" />} label="Instagram" />
-            <SocialPill icon={<Facebook className="size-4" />} label="Facebook" />
-            <SocialPill icon={<Linkedin className="size-4" />} label="LinkedIn" />
+            <SocialPill
+              icon={<Instagram className="size-4" />}
+              label="Instagram"
+              href={SOCIAL_LINKS.instagram}
+            />
+            <SocialPill
+              icon={<Facebook className="size-4" />}
+              label="Facebook"
+              href={SOCIAL_LINKS.facebook}
+            />
+            <SocialPill
+              icon={<Linkedin className="size-4" />}
+              label="LinkedIn"
+              href={SOCIAL_LINKS.linkedin}
+            />
           </div>
         </div>
       </div>
@@ -885,10 +957,20 @@ function EmptyEvents() {
   );
 }
 
-function SocialPill({ icon, label }: { icon: React.ReactNode; label: string }) {
+function SocialPill({
+  icon,
+  label,
+  href,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  href?: string;
+}) {
   return (
     <a
-      href="#footer"
+      href={href || "#footer"}
+      target={href ? "_blank" : undefined}
+      rel={href ? "noreferrer" : undefined}
       className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-brand-blue-deep hover:bg-white"
     >
       {icon} {label}
@@ -1021,12 +1103,28 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
 /* ---------- Footer ---------- */
 function SocialFooter() {
   const socials = [
-    { icon: Instagram, label: "Instagram", href: "https://instagram.com" },
-    { icon: Facebook, label: "Facebook", href: "https://facebook.com" },
-    { icon: Linkedin, label: "LinkedIn", href: "https://linkedin.com" },
-    { icon: Twitter, label: "X / Twitter", href: "https://twitter.com" },
-    { icon: Youtube, label: "YouTube", href: "https://youtube.com" },
+    {
+      icon: Instagram,
+      label: "Instagram",
+      href: SOCIAL_LINKS.instagram,
+    },
+    {
+      icon: Facebook,
+      label: "Facebook",
+      href: SOCIAL_LINKS.facebook,
+    },
+    {
+      icon: Linkedin,
+      label: "LinkedIn",
+      href: SOCIAL_LINKS.linkedin,
+    },
+    {
+      icon: FaTiktok,
+      label: "TikTok",
+      href: SOCIAL_LINKS.tiktok,
+    },
   ];
+
   return (
     <footer id="footer" className="relative z-10 mt-10 px-4 pb-10 sm:px-8">
       <div className="mx-auto max-w-7xl rounded-3xl glass-strong p-5 sm:p-8">
