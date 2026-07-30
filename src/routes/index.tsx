@@ -26,6 +26,13 @@ import mscPupLogo from "../assets/images/partners/msc-pup.svg";
 import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
 import datacampDonatesLogo from "../assets/images/partners/datacamp-donates.svg";
 import commonGroundDonAntonio from "../assets/images/partners/common-ground-don-antonio.svg";
+import mscBulsuLogo from "../assets/images/partners/msc-bulsu.svg";
+import mscLpubLogo from "../assets/images/partners/msc-lpub.svg";
+import mscNudLogo from "../assets/images/partners/msc-nud.svg";
+import mscNulLogo from "../assets/images/partners/msc-nul.svg";
+import mscPlmLogo from "../assets/images/partners/msc-plm.svg";
+import mscApcLogo from "../assets/images/partners/msc-apc.svg";
+import mscDlsuLogo from "../assets/images/partners/msc-dlsu.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -105,6 +112,13 @@ const PARTNERS: Partner[] = [
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
   { name: "DataCamp Donates", logo: datacampDonatesLogo },
   { name: "Common Ground Don Antonio", logo: commonGroundDonAntonio },
+  { name: "MSC BULSU", logo: mscBulsuLogo },
+  { name: "MSC LPUB", logo: mscLpubLogo },
+  { name: "MSC NUD", logo: mscNudLogo },
+  { name: "MSC NUL", logo: mscNulLogo },
+  { name: "MSC PLM", logo: mscPlmLogo },
+  { name: "MSC APC", logo: mscApcLogo },
+  { name: "MSC DLSU", logo: mscDlsuLogo },
 ];
 
 // Social media links
@@ -1005,7 +1019,7 @@ function WallOfLogos() {
 }
 
 function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: string[] }) {
-  const perSlide = 5; // Changed from 4 to 5 to accommodate the new partner
+  const perSlide = 5;
   const slides: Partner[][] = [];
   for (let i = 0; i < partners.length; i += perSlide) {
     slides.push(partners.slice(i, i + perSlide));
@@ -1041,7 +1055,7 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
                   className="group flex w-full max-w-[8rem] flex-col items-center gap-2 sm:w-28"
                 >
                   <div
-                    className="relative grid aspect-square w-20 place-items-center rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
+                    className="relative grid aspect-square w-20 place-items-center overflow-hidden rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
                     style={{
                       background:
                         "radial-gradient(circle at 30% 25%, color-mix(in oklab, white 95%, transparent), color-mix(in oklab, white 60%, transparent))",
@@ -1063,7 +1077,7 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
                       alt={`${p.name} logo`}
                       loading="lazy"
                       decoding="async"
-                      className="relative h-full w-full object-contain"
+                      className="relative h-full w-full object-cover"
                     />
                   </div>
                   <span className="text-center font-heading text-xs font-semibold tracking-tight text-brand-blue-deep/80 sm:text-sm">
