@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo } from "react";
 import { Bell, MailOpen, X, Satellite } from "lucide-react";
 import { PortalCard, PortalShell } from "@/components/PortalShell";
 import { usePortalUser } from "@/lib/portal-auth";
-import { authClient } from "@/lib/auth-client";
 import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/portal/inbox")({
@@ -46,11 +45,12 @@ function InboxPage() {
   useEffect(() => {
     const fetchApplicantData = async () => {
       try {
-        const res = (await authClient.$fetch(
-          getApiEndpoint("/api/v1/applicants/me"),
-        )) as any;
-        if (res?.data?.success && res.data.data) {
-          setApplicantData(res.data.data);
+        const fetchRes = await fetch(getApiEndpoint("/api/v1/applicants/me"), {
+          credentials: "include",
+        });
+        const resData = await fetchRes.json();
+        if (resData?.success && resData.data) {
+          setApplicantData(resData.data);
         }
       } catch {
         /* ignore */
