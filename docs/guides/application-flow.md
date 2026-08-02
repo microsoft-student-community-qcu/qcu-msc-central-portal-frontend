@@ -11,6 +11,8 @@ flowchart TD
     A["Stage 0: ID Photo Scan (IdUploadScanner)"] --> B{"POST /ocr/verify<br/>OCR Response"}
     
     B -- "Success (New)" --> C["Auto-fill Details"]
+    B -- "Unfinished Draft (resumePending)" --> M["Informational Modal:<br/>Unfinished Draft Found"]
+    M -- "Scan a Different ID" --> A
     B -- "Duplicate (alreadySubmitted)" --> K["Informational Modal:<br/>Application Already Submitted"]
     K -- "Scan a Different ID" --> A
     B -- "Fail (Attempts < 3)" --> A
@@ -33,16 +35,21 @@ flowchart TD
 
 ---
 
-## 🔒 Stage 0: On-Device OCR ID Verification
+## 🔒 Stage 0: On-Device OCR ID Verification & Draft Resumption
 
 1. **Scanner Component (`IdUploadScanner`)**:
    - Lazy-loaded `tesseract.js` chunk to keep initial bundle size small.
    - Captures photo from camera or user file upload.
 2. **Backend Processing (`POST /ocr/verify`)**:
    - **New Applicant (Success)**: Returns `studentId`, `firstName`, `lastName`, `middleInitial`, `ocrSessionId`, `manualRequired: false`.
-   - **Duplicate Application (`alreadySubmitted: true`)**: If an active application for the scanned Student ID already exists, an **Informational Modal** is presented notifying the applicant to check their personal/QCU email for account setup instructions and status updates. A **"Scan a Different ID"** primary button allows them to reset the scan flow for another ID.
+   - **Unfinished Draft (`resumePending: true`)**: If an unfinished draft exists for the scanned Student ID, the backend dispatches a 30-minute secure resume link email (`/apply?resumeToken=...`) and returns `resumePending: true`. The frontend displays an **"Unfinished Draft Found!"** modal with a **"Scan a Different ID"** button.
+   - **Duplicate Application (`alreadySubmitted: true`)**: If an active application for the scanned Student ID already exists, an **Informational Modal** is presented notifying the applicant to check their personal/QCU email for account setup instructions and status updates.
    - **OCR Attempt 1 or 2 Failed (`attemptsRemaining > 0`)**: Returns error message and keeps user on **Scan Stage** to retake/reupload a clearer photo.
    - **OCR Attempt 3 Failed (`attemptsRemaining === 0`)**: Returns `ocrSessionId` with **`manualRequired: true`**, advancing user to manual entry.
+3. **Cross-Device Draft Rehydration (`?resumeToken=...`)**:
+   - When an applicant clicks the resume link in their email (`/apply?resumeToken=<token>`), the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
+   - The backend validates the JWT and returns the draft payload (`form`, `currentStep`, `ocrSessionId`).
+   - The frontend rehydrates the state, transitions directly to the saved step in `stage: "form"`, displays a welcome toast, and clears `resumeToken` from the URL.
 
 ---
 

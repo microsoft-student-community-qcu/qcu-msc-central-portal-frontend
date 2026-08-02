@@ -10,6 +10,7 @@ import {
   Orbit,
   Sparkles,
   RefreshCw,
+  Mail,
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
@@ -26,6 +27,7 @@ import {
 import type { IdSubmission } from "@/components/IdUploadScanner";
 import { getApiEndpoint } from "@/lib/api-config";
 import { OFFICES } from "@/constants/offices";
+import { toast } from "sonner";
 
 // IdUploadScanner pulls in tesseract.js (~2MB). Lazy-load so the intro
 // stage of /apply stays light; the chunk fetches when the user reaches scan.
@@ -36,6 +38,9 @@ const IdUploadScanner = lazy(() =>
 );
 
 export const Route = createFileRoute("/apply/")({
+  validateSearch: (search: Record<string, unknown>): { resumeToken?: string } => ({
+    resumeToken: search.resumeToken as string | undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Apply · QCU MSC" },
@@ -397,6 +402,8 @@ function ApplyPage() {
   const [ocrSessionId, setOcrSessionId] = useState<string | null>(null);
   const [manualRequired, setManualRequired] = useState(false);
   const [alreadySubmittedToken, setAlreadySubmittedToken] = useState<string | null>(null);
+  const [draftResumePending, setDraftResumePending] = useState(false);
+  const [rehydratingDraft, setRehydratingDraft] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
@@ -428,6 +435,74 @@ function ApplyPage() {
     setClientReady(true);
   }, [navigate]);
 
+  const search = Route.useSearch();
+
+  useEffect(() => {
+    if (!search.resumeToken) return;
+
+    const resumeDraft = async () => {
+      setRehydratingDraft(true);
+      try {
+        const res = await fetch(getApiEndpoint("/api/v1/applicants/draft/resume"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: search.resumeToken }),
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json.success || !json.data) {
+          throw new Error(json.message || "Invalid or expired draft resume link.");
+        }
+
+        const draftData = json.data;
+        if (draftData.studentId) setConfirmStudentId(draftData.studentId);
+        if (draftData.lastName) setConfirmLastName(draftData.lastName);
+        if (draftData.firstName) setConfirmFirstName(draftData.firstName);
+        if (draftData.middleInitial) setConfirmMiddleInitial(draftData.middleInitial);
+        if (draftData.email) setConfirmEmail(draftData.email);
+
+        setForm((f) => ({
+          ...f,
+          studentId: draftData.studentId || f.studentId,
+          fullName: `${draftData.lastName || ""}, ${draftData.firstName || ""}`.trim(),
+          email: draftData.email || f.email,
+          college: draftData.college || f.college,
+          program: draftData.program || f.program,
+          section: draftData.section || f.section,
+          campus: draftData.campus || f.campus,
+          role: draftData.office || f.role,
+          dateOfBirth: draftData.dateOfBirth || f.dateOfBirth,
+          placeOfBirth: draftData.placeOfBirth || f.placeOfBirth,
+          gender: draftData.gender || f.gender,
+          houseAddress: draftData.houseAddress || f.houseAddress,
+          cellphone: draftData.cellphoneNumber || f.cellphone,
+          facebookLink: draftData.facebookLink || f.facebookLink,
+          interests: draftData.interestsSkillsHobbies || f.interests,
+          pastOrganizations: draftData.organizationHistory || f.pastOrganizations,
+          portfolio: draftData.portfolio || f.portfolio,
+          githubOrProjects: draftData.githubOrProjectLinks || f.githubOrProjects,
+          previousWorks: draftData.previousWorksAchievements || f.previousWorks,
+        }));
+
+        if (draftData.ocrSessionId) setOcrSessionId(draftData.ocrSessionId);
+
+        setStage("form");
+        const currentStep = draftData.currentStep || 1;
+        setFormStep(currentStep > 3 ? 3 : (currentStep as 1 | 2 | 3));
+        toast.success("Welcome back! Your application draft has been resumed.");
+
+        void navigate({ to: "/apply", replace: true });
+      } catch (err: any) {
+        toast.error(err.message || "Failed to resume draft.");
+        void navigate({ to: "/apply", replace: true });
+      } finally {
+        setRehydratingDraft(false);
+      }
+    };
+
+    void resumeDraft();
+  }, [search.resumeToken, navigate]);
+
   const handleScanComplete = async (payload: IdSubmission) => {
     setProvisionalIdFile(payload.fullIdImageFile);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
@@ -443,6 +518,11 @@ function ApplyPage() {
       const json = await res.json();
 
       if (res.ok && json.success) {
+        if (json.data?.resumePending) {
+          setDraftResumePending(true);
+          setOcrError(null);
+          return;
+        }
         if (json.data?.alreadySubmitted && json.data?.setupToken) {
           setAlreadySubmittedToken(json.data.setupToken);
           setOcrError(null);
@@ -845,6 +925,40 @@ function ApplyPage() {
                 <button
                   type="button"
                   onClick={() => setAlreadySubmittedToken(null)}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+                  style={{ background: "var(--gradient-cta)" }}
+                >
+                  <RefreshCw className="size-4" /> Scan a Different ID
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {draftResumePending && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
+              <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Mail className="size-8 animate-bounce" />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-display text-xl font-bold">
+                  Unfinished Draft Found!
+                </h3>
+                <p className="font-body text-sm text-slate-300 leading-relaxed">
+                  An active application draft for this Student ID is pending completion. We've sent a secure link to your registered email address to resume your application.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-400 border border-white/10">
+                💡 Please check your email inbox (and spam folder) to resume where you left off.
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDraftResumePending(false)}
                   className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
                   style={{ background: "var(--gradient-cta)" }}
                 >
