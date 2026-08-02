@@ -28,6 +28,7 @@ The frontend is built using a modern React SPA architecture with SSR-ready capab
 - [Applicant Application Flow](guides/application-flow.md) — Complete walkthrough from on-device OCR scan to 3-step batch form submission and account creation.
 - [Applicant Tracking & Resubmission](guides/portal-tracking.md) — Status tracking workflow, status badges, resubmission handling, and admin remark notices.
 - [Mission Control Inbox System](guides/inbox-system.md) — Dynamic transmission generation, submission greetings, status updates, and localStorage persistence.
+- [Assets, OpenGraph & Partner Logos](guides/assets-and-opengraph.md) — OpenGraph link card specs (<300 KB JPEG), dynamic origin resolution, and partner carousel integration.
 
 ### 🎨 Specifications & Design (`docs/specs/`)
 - [Space UI Design System](specs/design-system.md) — Palette tokens, space gradients, glassmorphism cards, and responsive layout standards.

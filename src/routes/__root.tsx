@@ -77,6 +77,13 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
   );
 }
 
+const getOgImageUrl = (path: string): string => {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${path}`;
+  }
+  return `https://rel.msc-qcu.tech${path}`;
+};
+
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   head: () => ({
     meta: [
@@ -90,13 +97,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { property: "og:title", content: "QCU MSC — Defying the Odds" },
       { property: "og:description", content: "Quezon City University Microsoft Student Community — events, initiatives, and collaborations defying the odds." },
       { property: "og:type", content: "website" },
-      { property: "og:image", content: "/og-image.jpg" },
+      { property: "og:url", content: typeof window !== "undefined" && window.location?.origin ? window.location.origin : "https://rel.msc-qcu.tech" },
+      { property: "og:image", content: getOgImageUrl("/OpenGraph-Banner.jpg") },
+      { property: "og:image:type", content: "image/jpeg" },
       { property: "og:image:width", content: "1216" },
       { property: "og:image:height", content: "640" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "QCU MSC — Defying the Odds" },
       { name: "twitter:description", content: "Quezon City University Microsoft Student Community — events, initiatives, and collaborations defying the odds." },
-      { name: "twitter:image", content: "/og-image.jpg" },
+      { name: "twitter:image", content: getOgImageUrl("/OpenGraph-Banner.jpg") },
     ],
     links: [
       { rel: "stylesheet", href: appCss },

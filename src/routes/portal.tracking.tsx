@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CheckCircle2, Circle, Clock, Rocket, AlertTriangle, Upload, Lock, Unlock, XCircle } from "lucide-react";
 import { PortalCard, PortalShell } from "@/components/PortalShell";
 import { usePortalUser } from "@/lib/portal-auth";
-import { authClient } from "@/lib/auth-client";
 import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -76,14 +75,15 @@ function TrackingPage() {
   useEffect(() => {
     const loadApplicant = async () => {
       try {
-        const res = await authClient.$fetch(getApiEndpoint("/api/v1/applicants/me")) as any;
-        console.log("Applicant data response:", res);
+        const fetchRes = await fetch(getApiEndpoint("/api/v1/applicants/me"), {
+          credentials: "include",
+        });
+        const apiResponse = await fetchRes.json();
+        console.log("Applicant data response:", apiResponse);
 
-        if (res.error) {
-          throw new Error(res.error.message || "Failed to load applicant data.");
+        if (!fetchRes.ok || !apiResponse?.success) {
+          throw new Error(apiResponse?.message || "Failed to load applicant data.");
         }
-
-        const apiResponse = res.data;
         if (apiResponse && apiResponse.success && apiResponse.data) {
           const applicantData = apiResponse.data;
           setApplicant(applicantData);
@@ -171,16 +171,12 @@ function TrackingPage() {
         fd.append("curriculumVitae", cvFile);
       }
 
-      const res = await authClient.$fetch(getApiEndpoint(`/api/v1/applicants/${applicant.id}/resubmit`), {
+      const linkRes = await fetch(getApiEndpoint(`/api/v1/applicants/${applicant.id}/resubmit`), {
         method: "POST",
+        credentials: "include",
         body: fd,
-      }) as any;
-
-      if (res.error) {
-        throw new Error(res.error.message || "Failed to resubmit application.");
-      }
-
-      const apiResponse = res.data;
+      });
+      const apiResponse = await linkRes.json();
       if (!apiResponse || !apiResponse.success) {
         let errorMsg = apiResponse?.message || "Failed to resubmit application.";
         if (apiResponse?.errors) {

@@ -75,8 +75,22 @@ export const getApiEndpoint = (path: string): string => {
 | OCR Verification | `getApiEndpoint("/ocr/verify")` | `POST` | `FormData` (`image`: File) |
 | Applicant Submission | `getApiEndpoint("/applicants")` | `POST` | `FormData` (Text fields + `certificateOfRegistration` + `curriculumVitae`) |
 | Account Linking | `getApiEndpoint("/users/link-applicant")` | `POST` | JSON (`{ applicantId, email, studentId }`) |
-| Fetch Current Applicant | `getApiEndpoint("/applicants/me")` | `GET` | Bearer Token / Session Cookie |
-| Resubmit Application | `getApiEndpoint("/applicants/me/resubmit")` | `PATCH` | `FormData` |
+| Fetch Current Applicant | `getApiEndpoint("/api/v1/applicants/me")` | `GET` | Cookie / Credentials (`credentials: "include"`) |
+| Resubmit Application | `getApiEndpoint("/api/v1/applicants/:id/resubmit")` | `POST` | `FormData` |
+
+---
+
+## ⚡ Better-Auth `$fetch` vs Native `fetch` Guidelines
+
+> [!IMPORTANT]
+> **Do not use `authClient.$fetch` for custom backend API endpoints.**
+
+- **Better-Auth Client (`authClient.$fetch`)**:
+  - Automatically prepends the Better-Auth base path (`/api/auth`) to any relative path.
+  - Reserved **exclusively** for Better-Auth framework calls (sign-in, sign-up, sign-out, session checks).
+- **Native `fetch` Requirement for Custom APIs**:
+  - Endpoints such as `/api/v1/applicants/me`, `/api/v1/inbox`, and `/api/v1/applicants/:id/resubmit` **must** be invoked using native `fetch(getApiEndpoint(...), { credentials: "include" })`.
+  - Using `authClient.$fetch` on custom endpoints corrupts the request path (e.g. `http://localhost:8080/api/auth/api/v1/applicants/me`) resulting in `404 Not Found` errors.
 
 ---
 

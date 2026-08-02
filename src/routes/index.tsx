@@ -33,6 +33,7 @@ import mscNulLogo from "../assets/images/partners/msc-nul.svg";
 import mscPlmLogo from "../assets/images/partners/msc-plm.svg";
 import mscApcLogo from "../assets/images/partners/msc-apc.svg";
 import mscDlsuLogo from "../assets/images/partners/msc-dlsu.svg";
+import powerBiLogo from "../assets/images/partners/Power-BI.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -119,6 +120,7 @@ const PARTNERS: Partner[] = [
   { name: "MSC PLM", logo: mscPlmLogo },
   { name: "MSC APC", logo: mscApcLogo },
   { name: "MSC DLSU", logo: mscDlsuLogo },
+  { name: "Power BI Pilipinas", logo: powerBiLogo },
 ];
 
 // Social media links

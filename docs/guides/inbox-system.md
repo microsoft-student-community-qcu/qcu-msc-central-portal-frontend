@@ -6,7 +6,7 @@ This guide documents the dynamic communication transmission system located in `s
 
 ## 📬 Dynamic Notification Transmissions
 
-The inbox generates live notifications dynamically based on the applicant's profile data fetched from `GET /applicants/me`:
+The inbox generates live notifications dynamically based on the applicant's profile data fetched from `GET /api/v1/applicants/me` via native `fetch(getApiEndpoint(...), { credentials: "include" })`:
 
 ### 1. Welcome & Submission Transmission
 - **Sender**: `"QCU MSC Mission Control"`

@@ -15,6 +15,14 @@ This guide documents the real-time application tracking portal located in `src/r
 
 ---
 
+## 🌐 API & Authentication Requirements
+
+- **Applicant Data Fetching**: `GET /api/v1/applicants/me`
+- **Resubmission Endpoint**: `POST /api/v1/applicants/:id/resubmit` (FormData multipart)
+- **Authentication Rule**: Custom backend endpoints (outside `/api/auth/*`) **must use native `fetch(getApiEndpoint(...), { credentials: "include" })`** instead of `authClient.$fetch` to prevent path corruption (`/api/auth/api/v1/...`).
+
+---
+
 ## ✏️ Resubmission Handling (`RESUBMIT` Status)
 
 When an admin sets an applicant's status to `RESUBMIT`:
@@ -24,5 +32,5 @@ When an admin sets an applicant's status to `RESUBMIT`:
    - Certificate of Registration upload
    - Curriculum Vitae upload
    - Section / Campus / Contact information updates
-3. Submitting sends a `PATCH` request to `getApiEndpoint("/applicants/me/resubmit")`.
+3. Submitting sends a `POST` FormData request to `getApiEndpoint("/api/v1/applicants/:id/resubmit")` via native `fetch`.
 4. Status automatically returns to `PENDING_REVIEW`.
