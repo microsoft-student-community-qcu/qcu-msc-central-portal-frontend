@@ -63,7 +63,8 @@ Partner logos displayed in `WallOfLogos` on `src/routes/index.tsx` follow these 
    ```typescript
    const PARTNERS: Partner[] = [
      ...
-     { name: "Power BI Pilipinas", logo: powerBiLogo },
+     { name: "MSC Philippines", logo: mscPhilippinesLogo },
    ];
    ```
 3. Keep the array order intentional: `WallOfLogos` renders partner sets from the `PARTNERS` array in sequence, so moving an entry changes the visual order on the homepage.
+
