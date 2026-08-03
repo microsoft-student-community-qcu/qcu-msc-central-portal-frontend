@@ -34,6 +34,8 @@ import mscApcLogo from "../assets/images/partners/msc-apc.svg";
 import mscDlsuLogo from "../assets/images/partners/msc-dlsu.svg";
 import powerBiLogo from "../assets/images/partners/power-bi.svg";
 import devconManilaLogo from "../assets/images/partners/devcon-manila.svg";
+import mscPhilippinesLogo from "../assets/images/partners/msc-philippines.svg";
+
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -114,6 +116,8 @@ const PARTNERS: Partner[] = [
   { name: "DataCamp Donates", logo: datacampDonatesLogo },
   { name: "Power BI Pilipinas", logo: powerBiLogo },
   { name: "DEVCON Manila", logo: devconManilaLogo },
+  { name: "MSC Philippines", logo: mscPhilippinesLogo },
+
   { name: "MSC BULSU", logo: mscBulsuLogo },
   { name: "MSC LPUB", logo: mscLpubLogo },
   { name: "MSC NUD", logo: mscNudLogo },
