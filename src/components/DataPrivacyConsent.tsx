@@ -34,7 +34,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
 
       <div className="mt-5 max-h-[24rem] space-y-5 overflow-y-auto rounded-2xl border border-brand-blue-deep/10 bg-brand-blue-light/10 p-5 font-body text-sm leading-relaxed text-brand-blue-deep/80">
         <p>
-          The <strong className="text-brand-blue-deep">QCU Microsoft Student Community (MSC-QCU)</strong>{" "}
+          The <strong className="text-brand-blue-deep">Microsoft Student Community QCU (MSC-QCU)</strong>{" "}
           collects and processes your personal information solely to evaluate and manage your
           membership application to the organization. By continuing, you acknowledge that you have
           read and understood how your data will be handled under RA 10173.
@@ -51,7 +51,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
               gender.
             </li>
             <li>
-              <strong className="text-brand-blue-deep">Contact details:</strong> personal email addresses, cellphone number, house address, and Facebook profile link.
+              <strong className="text-brand-blue-deep">Contact details:</strong> personal email address, cellphone number, house address, and Facebook profile link.
             </li>
             <li>
               <strong className="text-brand-blue-deep">Academic records:</strong> college, program,
@@ -85,7 +85,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
               organizational reporting. Such reports never identify you individually.
             </li>
             <li>
-              Access is limited to authorized MSC-QCU officers and advisers on a need-to-know basis.
+              Access is limited to authorized MSC-QCU officers on a need-to-know basis.
               We do not sell, rent, or trade your personal data, and we do not share it with third
               parties except when required by law or by QCU school authorities.
             </li>
