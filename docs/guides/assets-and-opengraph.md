@@ -9,14 +9,15 @@ This guide documents branding assets, OpenGraph link card specifications, and pa
 OpenGraph metadata is configured globally in `src/routes/__root.tsx`.
 
 ### 1. Dynamic Origin Resolution (`getOgImageUrl`)
-Crawlers (Facebook, Messenger, Discord, LinkedIn) require absolute image URLs (`https://...`). To support local testing and production seamlessly, `getOgImageUrl` resolves origins dynamically:
+Crawlers (Facebook, Messenger, Discord, LinkedIn) require absolute HTTPS image URLs (`https://...`). To support local testing, staging, and production seamlessly, `getOgImageUrl` resolves origins dynamically with a site fallback (`import.meta.env.VITE_SITE_URL` or `https://msc-qcu.tech`):
 
 ```typescript
 const getOgImageUrl = (path: string): string => {
   if (typeof window !== "undefined" && window.location?.origin) {
     return `${window.location.origin}${path}`;
   }
-  return `https://rel.msc-qcu.tech${path}`;
+  const siteUrl = import.meta.env.VITE_SITE_URL || "https://msc-qcu.tech";
+  return `${siteUrl.replace(/\/$/, "")}${path}`;
 };
 ```
 
@@ -25,6 +26,18 @@ const getOgImageUrl = (path: string): string => {
 - **Dimensions**: 1216 × 640 px (standard 1.91:1 ratio for mobile cards)
 - **Format**: Native JPEG (`image/jpeg`)
 - **File Size Limit**: **Strictly under 300 KB** (298 KB). Crawlers drop or refuse to render link preview images exceeding 300 KB.
+- **Required Meta Tags**:
+  - `og:image`: Direct image URL
+  - `og:image:secure_url`: Explicit HTTPS URL required by Facebook externalhit crawler
+  - `og:image:type`: `image/jpeg`
+  - `og:image:width`: `1216`
+  - `og:image:height`: `640`
+
+### 3. Clearing Cached Link Previews on Facebook
+Facebook caches Open Graph data for shared links. If Facebook previously cached a blank/white image:
+1. Open the [Facebook Sharing Debugger](https://developers.facebook.com/tools/debug/).
+2. Paste the shared link URL (e.g. `https://msc-qcu.tech`).
+3. Click **"Debug"** and then click **"Scrape Again"** to refresh Facebook's cached metadata and preview image.
 
 ---
 

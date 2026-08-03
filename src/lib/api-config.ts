@@ -4,11 +4,33 @@ export const getApiBaseURL = (): string => {
   }
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (host.includes("stsamscqcufrontendrel")) {
+    // Development Stage
+    if (
+      host.includes("stsamscqcufrontenddev") ||
+      host.includes("dev.msc-qcu.tech") ||
+      host.includes("dev-admin.msc-qcu.tech") ||
+      host.startsWith("dev-") ||
+      host.startsWith("dev.")
+    ) {
+      return "https://func-msc-qcu-backend-dev.azurewebsites.net/api/v1";
+    }
+    // Release / Staging Stage
+    if (
+      host.includes("stsamscqcufrontendrel") ||
+      host.includes("rel.msc-qcu.tech") ||
+      host.includes("rel-admin.msc-qcu.tech") ||
+      host.startsWith("rel-") ||
+      host.startsWith("rel.")
+    ) {
       return "https://func-msc-qcu-backend-rel.azurewebsites.net/api/v1";
     }
-    if (host.includes("stsamscqcufrontenddev")) {
-      return "https://func-msc-qcu-backend-dev.azurewebsites.net/api/v1";
+    // Production Stage
+    if (
+      host === "msc-qcu.tech" ||
+      host === "admin.msc-qcu.tech" ||
+      host.includes("stsamscqcufrontendprod")
+    ) {
+      return "https://func-msc-qcu-backend.azurewebsites.net/api/v1";
     }
   }
   return "";
