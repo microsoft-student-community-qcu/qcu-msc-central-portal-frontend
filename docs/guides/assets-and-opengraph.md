@@ -38,10 +38,10 @@ Partner logos displayed in `WallOfLogos` on `src/routes/index.tsx` follow these 
 - **Design Rule**: SVGs should contain **only the icon shape/glyph** (no text elements inside the SVG). Text inside SVGs can clash with light/dark theme backgrounds.
 
 ### 2. Adding a New Partner
-1. Place the clean icon SVG in `src/assets/images/partners/` (e.g. `Power-BI.svg`).
+1. Place the clean icon SVG in `src/assets/images/partners/` (e.g. `power-bi.svg`).
 2. Import the asset in `src/routes/index.tsx`:
    ```typescript
-   import powerBiLogo from "../assets/images/partners/Power-BI.svg";
+   import powerBiLogo from "../assets/images/partners/power-bi.svg";
    ```
 3. Add the partner to the `PARTNERS` array with their display name:
    ```typescript

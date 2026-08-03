@@ -32,7 +32,7 @@ import mscNulLogo from "../assets/images/partners/msc-nul.svg";
 import mscPlmLogo from "../assets/images/partners/msc-plm.svg";
 import mscApcLogo from "../assets/images/partners/msc-apc.svg";
 import mscDlsuLogo from "../assets/images/partners/msc-dlsu.svg";
-import powerBiLogo from "../assets/images/partners/Power-BI.svg";
+import powerBiLogo from "../assets/images/partners/power-bi.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
