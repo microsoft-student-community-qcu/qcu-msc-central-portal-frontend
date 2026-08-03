@@ -34,7 +34,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
 
       <div className="mt-5 max-h-[24rem] space-y-5 overflow-y-auto rounded-2xl border border-brand-blue-deep/10 bg-brand-blue-light/10 p-5 font-body text-sm leading-relaxed text-brand-blue-deep/80">
         <p>
-          The <strong className="text-brand-blue-deep">QCU Microsoft Student Community (QCU MSC)</strong>{" "}
+          The <strong className="text-brand-blue-deep">QCU Microsoft Student Community (MSC-QCU)</strong>{" "}
           collects and processes your personal information solely to evaluate and manage your
           membership application to the organization. By continuing, you acknowledge that you have
           read and understood how your data will be handled under RA 10173.
@@ -51,8 +51,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
               gender.
             </li>
             <li>
-              <strong className="text-brand-blue-deep">Contact details:</strong> personal and QCU
-              email addresses, cellphone number, house address, and Facebook profile link.
+              <strong className="text-brand-blue-deep">Contact details:</strong> personal email addresses, cellphone number, house address, and Facebook profile link.
             </li>
             <li>
               <strong className="text-brand-blue-deep">Academic records:</strong> college, program,
@@ -78,7 +77,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
               transmissions through the portal inbox and your registered email.
             </li>
             <li>
-              Creating your QCU MSC portal account, and — once accepted — managing your membership,
+              Creating your MSC-QCU portal account, and — once accepted — managing your membership,
               event registrations, and certificates.
             </li>
             <li>
@@ -86,7 +85,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
               organizational reporting. Such reports never identify you individually.
             </li>
             <li>
-              Access is limited to authorized QCU MSC officers and advisers on a need-to-know basis.
+              Access is limited to authorized MSC-QCU officers and advisers on a need-to-know basis.
               We do not sell, rent, or trade your personal data, and we do not share it with third
               parties except when required by law or by QCU school authorities.
             </li>
@@ -108,7 +107,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
               National Privacy Commission.
             </li>
             <li>
-              To exercise any of these rights, contact the QCU MSC officers through our official
+              To exercise any of these rights, contact the MSC-QCU officers through our official
               channels. Withdrawing consent may prevent us from processing your application.
             </li>
           </ul>
@@ -141,7 +140,7 @@ export function DataPrivacyConsent({ onAccept }: { onAccept: () => void }) {
           aria-describedby="consent-error"
         />
         <span className="font-body text-sm text-brand-blue-deep/85">
-          I have read and understood this notice, and I freely give my consent to QCU MSC to collect
+          I have read and understood this notice, and I freely give my consent to MSC-QCU to collect
           and process my personal information for the purposes stated above, in accordance with{" "}
           <strong className="text-brand-blue-deep">RA 10173 (Data Privacy Act of 2012)</strong>.
         </span>
