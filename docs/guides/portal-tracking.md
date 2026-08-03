@@ -6,12 +6,14 @@ This guide documents the real-time application tracking portal located in `src/r
 
 ## 📊 Application Status States
 
-| Status | Badge / Styling | Description |
-| :--- | :--- | :--- |
-| `PENDING_REVIEW` | Yellow / Orange | Application received and undergoing review by Management & Development. Flagged for manual review if `manual_application: true`. |
-| `RESUBMIT` | Amber / Warning Alert | Action required. Admin requested corrections. Displays admin remarks and opens resubmission form fields. |
-| `APPROVED` | Emerald / Green | Application approved by Base Command. Welcome onboarding notice displayed. |
-| `REJECTED` | Slate / Red | Decision finalized notice with admin remark. |
+| Status | Stage Index | Badge / Styling | Description |
+| :--- | :--- | :--- | :--- |
+| `PENDING_REVIEW` | Stage 1 | Yellow / Orange | Application received and undergoing review by Management & Development. Flagged for manual review if `manual_application: true`. |
+| `FOR_INTERVIEW` | Stage 2 | Blue / Info Alert | Interview scheduled. Displays interview notice and sends schedule notifications. |
+| `RESUBMIT` | Stage 1 | Amber / Warning Alert | Action required. Admin requested corrections. Displays admin remarks and opens resubmission form fields. |
+| `APPROVED` | Stage 4 | Emerald / Green | Application approved by Base Command. Welcome onboarding notice displayed. |
+| `REJECTED` | Stage 3 | Slate / Red | Decision finalized notice with admin remark. |
+| `CANCELLED` | Stage 3 | Slate / Red | Application cancelled. |
 
 ---
 
