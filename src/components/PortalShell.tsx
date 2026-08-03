@@ -37,6 +37,7 @@ const MEMBER_NAV: NavItem[] = [
 const APPLICANT_NAV: NavItem[] = [
   { to: "/portal/tracking", label: "Status", icon: ListChecks },
   { to: "/portal/inbox", label: "M&D Inbox", icon: Bell },
+  { to: "/portal/profile", label: "Profile", icon: UserIcon },
 ];
 
 function navForRole(role: PortalRole): NavItem[] {
@@ -330,7 +331,10 @@ function SidebarBody({
       </div>
 
       <div className="mt-auto border-t border-brand-blue-deep/10 p-8">
-        <div className="mb-6 flex items-center gap-3">
+        <Link
+          to="/portal/profile"
+          className="mb-6 flex items-center gap-3 rounded-2xl p-2 transition-colors hover:bg-brand-blue-deep/5"
+        >
           <div className="grid size-10 shrink-0 place-items-center rounded-full border border-brand-blue-deep/15 bg-brand-blue-deep/5 font-display text-xs font-extrabold text-brand-blue-deep">
             {initials || "·"}
           </div>
@@ -342,7 +346,7 @@ function SidebarBody({
               {user.email}
             </p>
           </div>
-        </div>
+        </Link>
         <button
           type="button"
           onClick={onSignOut}
