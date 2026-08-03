@@ -15,6 +15,7 @@ import {
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { CosmicLoader } from "@/components/CosmicLoader";
+import { DataPrivacyConsent } from "@/components/DataPrivacyConsent";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
@@ -407,7 +408,7 @@ function ApplyPage() {
   const [redirectingToAccount, setRedirectingToAccount] = useState(() =>
     hasActiveAccountRedirect(),
   );
-  const [stage, setStage] = useState<"scan" | "confirm" | "form">("scan");
+  const [stage, setStage] = useState<"consent" | "scan" | "confirm" | "form">("consent");
   const [provisionalIdFile, setProvisionalIdFile] = useState<File | null>(null);
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
   const [ocrSessionId, setOcrSessionId] = useState<string | null>(null);
@@ -982,9 +983,18 @@ function ApplyPage() {
           </div>
         )}
 
-        {stage === "scan" ? (
+        {stage === "consent" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-            <MissionPanel eyebrow="Pre-flight check" title={<>Verify your<br /><span className="text-brand-orange">student orbit</span></>} subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet." stats={[{ label: "Step", value: "00" }, { label: "Phase", value: "ID Scan" }, { label: "Range", value: "On-device" }]} />
+            <MissionPanel eyebrow="Privacy clearance" title={<>Consent to<br /><span className="text-brand-orange">data processing</span></>} subtitle="Before we scan your ID, review how QCU MSC collects and protects your personal information under RA 10173, the Data Privacy Act of 2012." stats={[{ label: "Step", value: "00" }, { label: "Phase", value: "Consent" }, { label: "Law", value: "RA 10173" }]} />
+            <div className="lg:pt-6">
+              <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
+                <DataPrivacyConsent onAccept={() => setStage("scan")} />
+              </div>
+            </div>
+          </div>
+        ) : stage === "scan" ? (
+          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
+            <MissionPanel eyebrow="Pre-flight check" title={<>Verify your<br /><span className="text-brand-orange">student orbit</span></>} subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet." stats={[{ label: "Step", value: "01" }, { label: "Phase", value: "ID Scan" }, { label: "Range", value: "On-device" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
                 <Suspense fallback={<div className="grid h-72 place-items-center text-sm text-white/70">Preparing on-device scanner…</div>}>
@@ -995,7 +1005,7 @@ function ApplyPage() {
           </div>
         ) : stage === "confirm" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-            <MissionPanel eyebrow="Confirm identity" title={<>Double-check your<br /><span className="text-brand-orange">ID details</span></>} subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email." stats={[{ label: "Step", value: "01" }, { label: "Phase", value: "Verify" }, { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" }]} />
+            <MissionPanel eyebrow="Confirm identity" title={<>Double-check your<br /><span className="text-brand-orange">ID details</span></>} subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email." stats={[{ label: "Step", value: "02" }, { label: "Phase", value: "Verify" }, { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
                 <ConfirmIdStep preview={provisionalIdPreview} loading={ocrLoading} error={ocrError} studentId={confirmStudentId} lastName={confirmLastName} firstName={confirmFirstName} middleInitial={confirmMiddleInitial} digitCorrected={digitCorrectedInName} email={confirmEmail} onStudentId={setConfirmStudentId} onLastName={setConfirmLastName} onFirstName={setConfirmFirstName} onMiddleInitial={setConfirmMiddleInitial} onEmail={setConfirmEmail} isManual={manualRequired} onBack={() => { setOcrError(null); setStage("scan"); }} onContinue={confirmAndStart} />
