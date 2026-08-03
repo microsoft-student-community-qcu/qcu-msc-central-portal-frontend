@@ -16,8 +16,10 @@ const getOgImageUrl = (path: string): string => {
   if (typeof window !== "undefined" && window.location?.origin) {
     return `${window.location.origin}${path}`;
   }
-  const siteUrl = import.meta.env.VITE_SITE_URL || "https://msc-qcu.tech";
-  return `${siteUrl.replace(/\/$/, "")}${path}`;
+  if (import.meta.env.VITE_SITE_URL) {
+    return `${import.meta.env.VITE_SITE_URL.replace(/\/$/, "")}${path}`;
+  }
+  return path;
 };
 ```
 
