@@ -9,9 +9,12 @@ import {
   Compass,
   Orbit,
   Sparkles,
+  RefreshCw,
+  Mail,
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import { CosmicLoader } from "@/components/CosmicLoader";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
@@ -24,6 +27,8 @@ import {
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
 import { getApiEndpoint } from "@/lib/api-config";
+import { OFFICES } from "@/constants/offices";
+import { toast } from "sonner";
 
 // IdUploadScanner pulls in tesseract.js (~2MB). Lazy-load so the intro
 // stage of /apply stays light; the chunk fetches when the user reaches scan.
@@ -34,6 +39,9 @@ const IdUploadScanner = lazy(() =>
 );
 
 export const Route = createFileRoute("/apply/")({
+  validateSearch: (search: Record<string, unknown>): { resumeToken?: string } => ({
+    resumeToken: search.resumeToken as string | undefined,
+  }),
   head: () => ({
     meta: [
       { title: "Apply · QCU MSC" },
@@ -270,14 +278,7 @@ const QUESTIONS: Question[] = [
     prompt: "Which department feels most like you?",
     helper: "You can always grow into other roles later.",
     kind: "select",
-    options: [
-      "Engineering / Development",
-      "Design & Creatives",
-      "Marketing & Communications",
-      "Operations & Logistics",
-      "Research & Curriculum",
-      "General Member",
-    ],
+    options: OFFICES.map((o) => o.label),
     validate: required,
   },
 
@@ -401,6 +402,9 @@ function ApplyPage() {
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
   const [ocrSessionId, setOcrSessionId] = useState<string | null>(null);
   const [manualRequired, setManualRequired] = useState(false);
+  const [alreadySubmittedToken, setAlreadySubmittedToken] = useState<string | null>(null);
+  const [draftResumePending, setDraftResumePending] = useState(false);
+  const [rehydratingDraft, setRehydratingDraft] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
@@ -432,6 +436,74 @@ function ApplyPage() {
     setClientReady(true);
   }, [navigate]);
 
+  const search = Route.useSearch();
+
+  useEffect(() => {
+    if (!search.resumeToken) return;
+
+    const resumeDraft = async () => {
+      setRehydratingDraft(true);
+      try {
+        const res = await fetch(getApiEndpoint("/api/v1/applicants/draft/resume"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: search.resumeToken }),
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json.success || !json.data) {
+          throw new Error(json.message || "Invalid or expired draft resume link.");
+        }
+
+        const draftData = json.data;
+        if (draftData.studentId) setConfirmStudentId(draftData.studentId);
+        if (draftData.lastName) setConfirmLastName(draftData.lastName);
+        if (draftData.firstName) setConfirmFirstName(draftData.firstName);
+        if (draftData.middleInitial) setConfirmMiddleInitial(draftData.middleInitial);
+        if (draftData.email) setConfirmEmail(draftData.email);
+
+        setForm((f) => ({
+          ...f,
+          studentId: draftData.studentId || f.studentId,
+          fullName: `${draftData.lastName || ""}, ${draftData.firstName || ""}`.trim(),
+          email: draftData.email || f.email,
+          college: draftData.college || f.college,
+          program: draftData.program || f.program,
+          section: draftData.section || f.section,
+          campus: draftData.campus || f.campus,
+          role: draftData.office || f.role,
+          dateOfBirth: draftData.dateOfBirth || f.dateOfBirth,
+          placeOfBirth: draftData.placeOfBirth || f.placeOfBirth,
+          gender: draftData.gender || f.gender,
+          houseAddress: draftData.houseAddress || f.houseAddress,
+          cellphone: draftData.cellphoneNumber || f.cellphone,
+          facebookLink: draftData.facebookLink || f.facebookLink,
+          interests: draftData.interestsSkillsHobbies || f.interests,
+          pastOrganizations: draftData.organizationHistory || f.pastOrganizations,
+          portfolio: draftData.portfolio || f.portfolio,
+          githubOrProjects: draftData.githubOrProjectLinks || f.githubOrProjects,
+          previousWorks: draftData.previousWorksAchievements || f.previousWorks,
+        }));
+
+        if (draftData.ocrSessionId) setOcrSessionId(draftData.ocrSessionId);
+
+        setStage("form");
+        const currentStep = draftData.currentStep || 1;
+        setFormStep(currentStep > 3 ? 3 : (currentStep as 1 | 2 | 3));
+        toast.success("Welcome back! Your application draft has been resumed.");
+
+        void navigate({ to: "/apply", replace: true });
+      } catch (err: any) {
+        toast.error(err.message || "Failed to resume draft.");
+        void navigate({ to: "/apply", replace: true });
+      } finally {
+        setRehydratingDraft(false);
+      }
+    };
+
+    void resumeDraft();
+  }, [search.resumeToken, navigate]);
+
   const handleScanComplete = async (payload: IdSubmission) => {
     setProvisionalIdFile(payload.fullIdImageFile);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
@@ -447,6 +519,17 @@ function ApplyPage() {
       const json = await res.json();
 
       if (res.ok && json.success) {
+        if (json.data?.resumePending) {
+          setDraftResumePending(true);
+          setOcrError(null);
+          return;
+        }
+        if (json.data?.alreadySubmitted && json.data?.setupToken) {
+          setAlreadySubmittedToken(json.data.setupToken);
+          setOcrError(null);
+          return;
+        }
+
         setStage("confirm");
         setOcrSessionId(json.data.ocrSessionId);
         setManualRequired(false);
@@ -709,7 +792,10 @@ function ApplyPage() {
       else if (g.includes("LGBTQ")) backendGender = "LGBTQIA";
       fd.append("gender", backendGender);
 
-      fd.append("membershipRole", form.role);
+      const targetOffice =
+        OFFICES.find((o) => o.value === form.role || o.label === form.role)?.value ??
+        "SECRETARIAT_OFFICE";
+      fd.append("office", targetOffice);
       fd.append("houseAddress", form.houseAddress);
       fd.append("cellphoneNumber", form.cellphone);
       fd.append("qcuMscEmail", form.email);
@@ -746,8 +832,6 @@ function ApplyPage() {
         throw new Error(errorMsg);
       }
 
-      startAccountRedirect();
-      setRedirectingToAccount(true);
       try {
         let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
         if (cleanMI) cleanMI = cleanMI + ".";
@@ -761,13 +845,17 @@ function ApplyPage() {
             firstName: confirmFirstName.trim(),
             lastName: confirmLastName.trim(),
             middleInitial: cleanMI,
+            setupToken: json.data?.setupToken,
           }),
         );
       } catch {
         /* ignore */
       }
-      void navigate({ to: "/apply/account", replace: true }).catch(() => {
-        setRedirectingToAccount(false);
+
+      await navigate({
+        to: "/apply/account",
+        search: json.data?.setupToken ? { token: json.data.setupToken } : {},
+        replace: true,
       });
     } catch (err: any) {
       setError(err.message || "An error occurred during submission.");
@@ -795,6 +883,7 @@ function ApplyPage() {
 
   if (!clientReady) return <ApplyBootScreen />;
   if (redirectingToAccount) return <AccountRedirectScreen />;
+  if (ocrLoading) return <CosmicLoader label="Reading your ID" />;
 
   return (
     <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
@@ -819,6 +908,70 @@ function ApplyPage() {
       </header>
 
       <main className="relative z-10 mx-auto max-w-7xl px-4 pb-24 sm:px-8">
+        {alreadySubmittedToken && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
+              <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <CheckCircle2 className="size-8" />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-display text-xl font-bold">
+                  Application Already Submitted
+                </h3>
+                <p className="font-body text-sm text-slate-300 leading-relaxed">
+                  An active application for this Student ID has already been submitted. Please check your personal or QCU email address for account setup instructions and status updates.
+                </p>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setAlreadySubmittedToken(null)}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+                  style={{ background: "var(--gradient-cta)" }}
+                >
+                  <RefreshCw className="size-4" /> Scan a Different ID
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {draftResumePending && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
+              <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Mail className="size-8 animate-bounce" />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-display text-xl font-bold">
+                  Unfinished Draft Found!
+                </h3>
+                <p className="font-body text-sm text-slate-300 leading-relaxed">
+                  An active application draft for this Student ID is pending completion. We've sent a secure link to your registered email address to resume your application.
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-400 border border-white/10">
+                💡 Please check your email inbox (and spam folder) to resume where you left off.
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setDraftResumePending(false)}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+                  style={{ background: "var(--gradient-cta)" }}
+                >
+                  <RefreshCw className="size-4" /> Scan a Different ID
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {stage === "scan" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
             <MissionPanel eyebrow="Pre-flight check" title={<>Verify your<br /><span className="text-brand-orange">student orbit</span></>} subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet." stats={[{ label: "Step", value: "00" }, { label: "Phase", value: "ID Scan" }, { label: "Range", value: "On-device" }]} />
@@ -1140,16 +1293,9 @@ function ApplyPage() {
                           <SelectValue placeholder="Select preferred office" />
                         </SelectTrigger>
                         <SelectContent>
-                          {[
-                            "Engineering / Development",
-                            "Design & Creatives",
-                            "Marketing & Communications",
-                            "Operations & Logistics",
-                            "Research & Curriculum",
-                            "General Member",
-                          ].map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {r}
+                          {OFFICES.map((office) => (
+                            <SelectItem key={office.value} value={office.value}>
+                              {office.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -1392,7 +1538,7 @@ function AccountRedirectScreen() {
             <Rocket className="size-7" />
           </div>
           <h1 className="mt-5 font-display text-2xl font-extrabold leading-tight text-brand-blue-deep sm:text-3xl">
-            Preparing your cockpit
+            Preparing account setup...
           </h1>
           <p className="mt-2 font-body text-sm text-brand-blue-deep/70">
             Your application is locked in. Opening account creation now.
@@ -1736,7 +1882,9 @@ function ConfirmIdStep({
   onBack: () => void;
   onContinue: () => void;
 }) {
-  const canEditNameAndContinue = isManual || !!studentId.trim();
+  const accountExists =
+    !!error &&
+    (error.toLowerCase().includes("already exists") || error.toLowerCase().includes("sign in"));
 
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
@@ -1763,16 +1911,22 @@ function ConfirmIdStep({
         <label className="block">
           <div className="mb-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
             Student Number{" "}
-            {loading && (
+            {loading ? (
               <span className="ml-1 normal-case text-brand-blue-deep/50">(reading…)</span>
+            ) : accountExists ? (
+              <span className="ml-1 normal-case text-red-600 font-semibold">(Account Exists)</span>
+            ) : !isManual ? (
+              <span className="ml-1 normal-case text-emerald-600 font-semibold">(Verified from ID)</span>
+            ) : (
+              <span className="ml-1 normal-case text-amber-600 font-semibold">(Manual entry)</span>
             )}
           </div>
           <Input
             value={studentId}
             onChange={(e) => onStudentId(e.target.value)}
             placeholder={loading ? "Auto-filling…" : "e.g. 23-1234"}
-            disabled={loading || (!isManual && !!studentId)}
-            className="h-12 bg-white/85 text-base disabled:opacity-80"
+            disabled={loading || !isManual || accountExists}
+            className="h-12 bg-white/85 text-base disabled:opacity-80 disabled:cursor-not-allowed"
           />
         </label>
 
@@ -1788,8 +1942,8 @@ function ConfirmIdStep({
               value={lastName}
               onChange={(e) => onLastName(e.target.value)}
               placeholder={loading ? "Auto-filling…" : "Dela Cruz"}
-              disabled={loading || !canEditNameAndContinue}
-              className="h-12 bg-white/85 text-base disabled:opacity-60"
+              disabled={loading || accountExists}
+              className="h-12 bg-white/85 text-base disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </label>
 
@@ -1804,8 +1958,8 @@ function ConfirmIdStep({
               value={firstName}
               onChange={(e) => onFirstName(e.target.value)}
               placeholder={loading ? "Auto-filling…" : "Juan"}
-              disabled={loading || !canEditNameAndContinue}
-              className="h-12 bg-white/85 text-base disabled:opacity-60"
+              disabled={loading || accountExists}
+              className="h-12 bg-white/85 text-base disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </label>
 
@@ -1820,9 +1974,9 @@ function ConfirmIdStep({
               value={middleInitial}
               onChange={(e) => onMiddleInitial(e.target.value)}
               placeholder={loading ? "…" : "S"}
-              disabled={loading || !canEditNameAndContinue}
+              disabled={loading || accountExists}
               maxLength={2}
-              className="h-12 bg-white/85 text-base text-center min-w-[3.5rem] disabled:opacity-60"
+              className="h-12 bg-white/85 text-base text-center min-w-[3.5rem] disabled:opacity-60 disabled:cursor-not-allowed"
             />
           </label>
         </div>
@@ -1843,8 +1997,8 @@ function ConfirmIdStep({
             value={email}
             onChange={(e) => onEmail(e.target.value)}
             placeholder="you@gmail.com"
-            disabled={loading || !canEditNameAndContinue}
-            className="h-12 bg-white/85 text-base disabled:opacity-60"
+            disabled={loading || accountExists}
+            className="h-12 bg-white/85 text-base disabled:opacity-60 disabled:cursor-not-allowed"
           />
           <p className="mt-1 text-[11px] text-brand-blue-deep/60">
             Account password setup link and notifications will be delivered to this address.
@@ -1853,8 +2007,19 @@ function ConfirmIdStep({
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-semibold text-red-600">
-          {error}
+        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-xs font-semibold text-red-600 space-y-3">
+          <div>{error}</div>
+          {accountExists && (
+            <div>
+              <Link
+                to="/portal/login"
+                className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 font-heading text-xs font-bold text-white shadow-md transition hover:-translate-y-0.5"
+                style={{ background: "var(--gradient-cta)" }}
+              >
+                Sign In <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          )}
         </div>
       )}
 
@@ -1869,7 +2034,7 @@ function ConfirmIdStep({
         <button
           type="button"
           onClick={onContinue}
-          disabled={loading || !canEditNameAndContinue}
+          disabled={loading || accountExists}
           className="inline-flex items-center gap-2 rounded-full px-7 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-50"
           style={{ background: "var(--gradient-cta)" }}
         >

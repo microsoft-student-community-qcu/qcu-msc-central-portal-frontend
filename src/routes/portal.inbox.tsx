@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo } from "react";
 import { Bell, MailOpen, X, Satellite } from "lucide-react";
 import { PortalCard, PortalShell } from "@/components/PortalShell";
 import { usePortalUser } from "@/lib/portal-auth";
-import { authClient } from "@/lib/auth-client";
 import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/portal/inbox")({
@@ -24,33 +23,31 @@ function InboxPage() {
   const [applicantData, setApplicantData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Initialize read and dismissed message IDs from localStorage
-  const [readIds, setReadIds] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_READ_KEY);
-      return stored ? JSON.parse(stored) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Initialize read and dismissed message IDs after client mount to prevent SSR hydration mismatch
+  const [readIds, setReadIds] = useState<string[]>([]);
+  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
 
-  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+  useEffect(() => {
     try {
-      const stored = localStorage.getItem(LOCAL_STORAGE_DISMISSED_KEY);
-      return stored ? JSON.parse(stored) : [];
+      const storedRead = localStorage.getItem(LOCAL_STORAGE_READ_KEY);
+      if (storedRead) setReadIds(JSON.parse(storedRead));
+
+      const storedDismissed = localStorage.getItem(LOCAL_STORAGE_DISMISSED_KEY);
+      if (storedDismissed) setDismissedIds(JSON.parse(storedDismissed));
     } catch {
-      return [];
+      /* ignore */
     }
-  });
+  }, []);
 
   useEffect(() => {
     const fetchApplicantData = async () => {
       try {
-        const res = (await authClient.$fetch(
-          getApiEndpoint("/api/v1/applicants/me"),
-        )) as any;
-        if (res?.data?.success && res.data.data) {
-          setApplicantData(res.data.data);
+        const fetchRes = await fetch(getApiEndpoint("/api/v1/applicants/me"), {
+          credentials: "include",
+        });
+        const resData = await fetchRes.json();
+        if (resData?.success && resData.data) {
+          setApplicantData(resData.data);
         }
       } catch {
         /* ignore */
@@ -109,6 +106,17 @@ function InboxPage() {
           ? "Your application materials were received and flagged for manual review by our Management & Development team. We are currently verifying your credentials."
           : "Your application is currently undergoing evaluation by our Management & Development team. We will transmit updates here as review progresses.",
         date: submissionDateStr,
+        unread: true,
+      });
+    } else if (applicantData.status === "FOR_INTERVIEW") {
+      list.push({
+        id: `app-status-interview-${applicantData.id}-${applicantData.updatedAt || "1"}`,
+        from: "Management & Development",
+        subject: "Notice: Interview Scheduled",
+        preview: applicantData.adminMessage
+          ? `Admin remark: "${applicantData.adminMessage}". We will transmit interview details to your registered QCU email.`
+          : "Your application has advanced! Our Management & Development team is scheduling an interview with you.",
+        date: updateDateStr,
         unread: true,
       });
     } else if (applicantData.status === "RESUBMIT") {
