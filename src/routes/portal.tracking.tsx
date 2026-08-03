@@ -123,14 +123,15 @@ function TrackingPage() {
   const getStatusStage = (status: string) => {
     switch (status) {
       case "PENDING_REVIEW":
-        return 1;
       case "RESUBMIT":
         return 1;
-      case "APPROVED":
-        return 4;
+      case "FOR_INTERVIEW":
+        return 2;
       case "REJECTED":
       case "CANCELLED":
         return 3;
+      case "APPROVED":
+        return 4;
       default:
         return 0;
     }
