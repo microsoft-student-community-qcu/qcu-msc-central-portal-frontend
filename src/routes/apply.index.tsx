@@ -38,6 +38,16 @@ const IdUploadScanner = lazy(() =>
   })),
 );
 
+function sanitizeOcrMessage(message: string | undefined | null): string {
+  if (!message) return "Could not read Student ID. Please re-scan your ID card.";
+  // Backend error text sometimes includes raw HTTP endpoints; strip those for end users.
+  if (/ocr session expired/i.test(message) || /POST\/api\/v1/i.test(message)) {
+    return "Your ID verification session expired. Please re-scan your student ID to verify it again.";
+  }
+  return message;
+}
+
+
 export const Route = createFileRoute("/apply/")({
   validateSearch: (search: Record<string, unknown>): { resumeToken?: string } => ({
     resumeToken: search.resumeToken as string | undefined,
@@ -563,14 +573,14 @@ function ApplyPage() {
         setConfirmFirstName(json.data?.firstName || "");
         setConfirmMiddleInitial(json.data?.middleInitial || "");
         setDigitCorrectedInName(false);
-        setOcrError(json.message || "Could not read Student ID. Please re-scan your ID card.");
+        setOcrError(sanitizeOcrMessage(json.message));
       }
     } catch (err) {
       setStage("confirm");
       setOcrError(
-        err instanceof Error
-          ? err.message
-          : "We couldn't process your ID image. Please re-scan your ID card.",
+        sanitizeOcrMessage(
+          err instanceof Error ? err.message : "We couldn't process your ID image. Please re-scan your ID card.",
+        ),
       );
     } finally {
       setOcrLoading(false);
