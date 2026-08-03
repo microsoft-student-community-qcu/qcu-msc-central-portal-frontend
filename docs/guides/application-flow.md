@@ -8,7 +8,9 @@ This guide documents the full end-to-end applicant onboarding flow implemented i
 
 ```mermaid
 flowchart TD
-    A["Stage 0: ID Photo Scan (IdUploadScanner)"] --> B{"POST /ocr/verify<br/>OCR Response"}
+    Z["Stage 00: Data Privacy Consent (DataPrivacyConsent)<br/>RA 10173 checkbox — frontend-only gate"] --> A
+    A["Stage 01: ID Photo Scan (IdUploadScanner)"] --> B{"POST /ocr/verify<br/>OCR Response"}
+
     
     B -- "Success (New)" --> C["Auto-fill Details"]
     B -- "Unfinished Draft (resumePending)" --> M["Informational Modal:<br/>Unfinished Draft Found"]
@@ -18,7 +20,7 @@ flowchart TD
     B -- "Fail (Attempts < 3)" --> A
     B -- "Fail (Attempt 3)" --> D["Unlock Manual Entry"]
     
-    C --> E["Stage 1: Identity Confirmation (ConfirmIdStep)"]
+    C --> E["Stage 02: Identity Confirmation (ConfirmIdStep)"]
     D --> E
     
     E --> F["Stage 2: 3-Step Batch Form"]
@@ -35,7 +37,17 @@ flowchart TD
 
 ---
 
-## 🔒 Stage 0: On-Device OCR ID Verification & Draft Resumption
+## 🛡️ Stage 00: Data Privacy Consent (RA 10173)
+
+- Component: [`src/components/DataPrivacyConsent.tsx`](../../src/components/DataPrivacyConsent.tsx); rendered by `apply.index.tsx` when `stage === "consent"` (the new initial stage).
+- Presents a full privacy notice under **Republic Act No. 10173 (Data Privacy Act of 2012)** covering: information collected (ID image, student number, contact details, academic records, COR/CV, application content), purposes of processing (enrollment verification, screening, status transmissions, portal account & membership management, anonymized reporting), disclosure limits, retention, and the data subject's rights.
+- **Validation is frontend-only**: the "I Agree — Continue to ID Verification" button stays disabled until the checkbox is ticked; an inline error appears if the user attempts to proceed unchecked. No consent request is sent to the backend.
+- On accept, the page transitions to `stage: "scan"` and only then is the OCR scanner (and its lazy `tesseract.js` chunk) reachable.
+
+---
+
+## 🔒 Stage 01: On-Device OCR ID Verification & Draft Resumption
+
 
 1. **Scanner Component (`IdUploadScanner`)**:
    - Lazy-loaded `tesseract.js` chunk to keep initial bundle size small.
@@ -53,7 +65,7 @@ flowchart TD
 
 ---
 
-## ✏️ Stage 1: Identity & Name Confirmation (`ConfirmIdStep`)
+## ✏️ Stage 02: Identity & Name Confirmation (`ConfirmIdStep`)
 
 - Applicant verifies extracted Student ID (`YY-NNNN`), Full Name, and Personal Email.
 - If `manualRequired: true`, all fields unlock so the applicant can type their details manually by hand.
