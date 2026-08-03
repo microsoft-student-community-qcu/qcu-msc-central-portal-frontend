@@ -33,6 +33,7 @@ import mscPlmLogo from "../assets/images/partners/msc-plm.svg";
 import mscApcLogo from "../assets/images/partners/msc-apc.svg";
 import mscDlsuLogo from "../assets/images/partners/msc-dlsu.svg";
 import powerBiLogo from "../assets/images/partners/power-bi.svg";
+import devconManilaLogo from "../assets/images/partners/devcon-manila.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -111,6 +112,8 @@ const PARTNERS: Partner[] = [
   { name: "MSC PUP", logo: mscPupLogo },
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
   { name: "DataCamp Donates", logo: datacampDonatesLogo },
+  { name: "Power BI Pilipinas", logo: powerBiLogo },
+  { name: "DEVCON Manila", logo: devconManilaLogo },
   { name: "MSC BULSU", logo: mscBulsuLogo },
   { name: "MSC LPUB", logo: mscLpubLogo },
   { name: "MSC NUD", logo: mscNudLogo },
@@ -118,7 +121,6 @@ const PARTNERS: Partner[] = [
   { name: "MSC PLM", logo: mscPlmLogo },
   { name: "MSC APC", logo: mscApcLogo },
   { name: "MSC DLSU", logo: mscDlsuLogo },
-  { name: "Power BI Pilipinas", logo: powerBiLogo },
 ];
 
 // Social media links
@@ -226,7 +228,7 @@ function SiteHeader() {
         </a>
       </nav>
       <div className="hidden items-center gap-2 md:flex">
-        <AuthHeaderAction />
+        <AuthHeaderAction variant="desktop" />
         <LoggedInApplyReplacement />
       </div>
 
@@ -265,7 +267,7 @@ function SiteHeader() {
             Collaborate
           </a>
           <div className="mt-1 flex flex-col items-stretch gap-2 border-t border-white/40 pt-3 [&>*]:w-full [&_a]:justify-center [&_button]:justify-center">
-            <AuthHeaderAction />
+            <AuthHeaderAction variant="mobile" />
             <div onClick={() => setMenuOpen(false)} className="w-full [&>a]:w-full">
               <LoggedInApplyReplacement />
             </div>
@@ -276,7 +278,7 @@ function SiteHeader() {
   );
 }
 
-function AuthHeaderAction() {
+function AuthHeaderAction({ variant = "desktop" }: { variant?: "desktop" | "mobile" }) {
   const user = usePortalUser();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -294,7 +296,15 @@ function AuthHeaderAction() {
   }, [open]);
 
   if (!mounted || !user) {
-    return (
+    return variant === "mobile" ? (
+      <Link
+        to="/portal/login"
+        onClick={() => setOpen(false)}
+        className="inline-flex w-full items-center justify-center rounded-full bg-brand-blue-deep px-4 py-2.5 text-sm font-semibold text-white shadow-md transition hover:-translate-y-0.5 hover:shadow-lg"
+      >
+        Log In
+      </Link>
+    ) : (
       <Link
         to="/portal/login"
         className="rounded-full px-4 py-2 text-sm font-semibold text-white/90 shadow-none transition hover:text-white hover:underline"
