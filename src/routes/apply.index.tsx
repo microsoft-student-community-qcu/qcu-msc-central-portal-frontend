@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import { CosmicLoader } from "@/components/CosmicLoader";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
@@ -844,6 +845,7 @@ function ApplyPage() {
             firstName: confirmFirstName.trim(),
             lastName: confirmLastName.trim(),
             middleInitial: cleanMI,
+            setupToken: json.data?.setupToken,
           }),
         );
       } catch {
@@ -881,6 +883,7 @@ function ApplyPage() {
 
   if (!clientReady) return <ApplyBootScreen />;
   if (redirectingToAccount) return <AccountRedirectScreen />;
+  if (ocrLoading) return <CosmicLoader label="Reading your ID" />;
 
   return (
     <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>

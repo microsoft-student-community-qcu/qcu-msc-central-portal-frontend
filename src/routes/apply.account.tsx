@@ -71,6 +71,7 @@ type Applicant = {
   firstName?: string;
   lastName?: string;
   middleInitial?: string;
+  setupToken?: string;
 };
 
 function ApplyAccountPage() {
@@ -88,14 +89,14 @@ function ApplyAccountPage() {
 
   useEffect(() => {
     clearAccountRedirect();
-    
+
     if (token) {
       setLoading(true);
       setTokenError(null);
       fetch(getApiEndpoint("/api/v1/users/validate-setup-token"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token }),
       })
         .then((res) => {
           if (!res.ok) {
@@ -121,6 +122,7 @@ function ApplyAccountPage() {
               firstName: json.data.firstName,
               lastName: json.data.lastName,
               middleInitial: json.data.middleInitial || "",
+              setupToken: token,
             });
           } else {
             setTokenError("Could not retrieve applicant details.");
@@ -164,6 +166,11 @@ function ApplyAccountPage() {
       const firstName = applicant.firstName || (applicant.fullName?.trim().split(" ").slice(1).join(" ") || "");
       const lastName = applicant.lastName || (applicant.fullName?.trim().split(" ")[0] || "");
       const middleInitial = applicant.middleInitial || "";
+      const effectiveSetupToken = token || applicant.setupToken || "";
+
+      if (!effectiveSetupToken) {
+        throw new Error("Setup token is missing. Please click the setup link in your email to create your account.");
+      }
 
       const signUpRes = await authClient.signUp.email({
         email: applicant.email,
@@ -172,6 +179,7 @@ function ApplyAccountPage() {
         studentId: applicant.studentId,
         firstName,
         lastName,
+        setupToken: effectiveSetupToken,
         ...(middleInitial ? { middleInitial } : {}),
       } as any);
 
