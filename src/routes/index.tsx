@@ -11,20 +11,28 @@ import {
   Instagram,
   Linkedin,
   Facebook,
-  Twitter,
-  Youtube,
   LayoutDashboard,
   LogOut,
   User as UserIcon,
   Menu,
   X,
 } from "lucide-react";
+import { FaTiktok } from "react-icons/fa";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import azureCommunityLogo from "../assets/images/partners/microsoft-azure-community-philippines.svg";
 import bitsLogo from "../assets/images/partners/bits.svg";
 import mscPupLogo from "../assets/images/partners/msc-pup.svg";
 import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
+import datacampDonatesLogo from "../assets/images/partners/datacamp-donates.svg";
+import mscBulsuLogo from "../assets/images/partners/msc-bulsu.svg";
+import mscLpubLogo from "../assets/images/partners/msc-lpub.svg";
+import mscNudLogo from "../assets/images/partners/msc-nud.svg";
+import mscNulLogo from "../assets/images/partners/msc-nul.svg";
+import mscPlmLogo from "../assets/images/partners/msc-plm.svg";
+import mscApcLogo from "../assets/images/partners/msc-apc.svg";
+import mscDlsuLogo from "../assets/images/partners/msc-dlsu.svg";
+import powerBiLogo from "../assets/images/partners/power-bi.svg";
 
 import { routeForRole, setPortalUser, usePortalUser } from "@/lib/portal-auth";
 
@@ -48,7 +56,8 @@ export const Route = createFileRoute("/")({
   component: Landing,
 });
 
-const COLLAB_EMAIL = "msc.collaborate@qcu.edu.ph";
+const COLLAB_EMAIL = "msc-qcu@outlook.com"; // General collaboration email
+const PARTNERSHIP_EMAIL = "mscqcurelations@outlook.com";
 
 type EventItem = {
   id: string;
@@ -60,7 +69,10 @@ type EventItem = {
   image?: string;
 };
 
-// Three most recent upcoming events. Drop `image` URLs in when photos are ready.
+// Set this to true to show "Coming Soon" design, false to show actual events
+const SHOW_COMING_SOON = true;
+
+// Static event data.
 const EVENTS: EventItem[] = [
   {
     id: "ai-launchpad",
@@ -98,7 +110,24 @@ const PARTNERS: Partner[] = [
   { name: "BITS", logo: bitsLogo },
   { name: "MSC PUP", logo: mscPupLogo },
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
+  { name: "DataCamp Donates", logo: datacampDonatesLogo },
+  { name: "MSC BULSU", logo: mscBulsuLogo },
+  { name: "MSC LPUB", logo: mscLpubLogo },
+  { name: "MSC NUD", logo: mscNudLogo },
+  { name: "MSC NUL", logo: mscNulLogo },
+  { name: "MSC PLM", logo: mscPlmLogo },
+  { name: "MSC APC", logo: mscApcLogo },
+  { name: "MSC DLSU", logo: mscDlsuLogo },
+  { name: "Power BI Pilipinas", logo: powerBiLogo },
 ];
+
+// Social media links
+const SOCIAL_LINKS = {
+  instagram: "https://www.instagram.com/mscqcu?igsh=OGNiYWxzMTduZ2F4&utm_source=qr",
+  facebook: "https://www.facebook.com/share/1cMFPEUjRo/?mibextid=wwXIfr",
+  linkedin: "https://www.linkedin.com/company/microsoft-student-community-quezon-city-university/",
+  tiktok: "https://www.tiktok.com/@mscqcu?_r=1&_t=ZS-982xD8IfXj6",
+};
 
 function Landing() {
   return (
@@ -119,7 +148,6 @@ function Landing() {
 }
 
 /* ---------- Background ---------- */
-/* SkyBackdrop is shared from @/components/SkyBackdrop */
 
 function Cloud({ className = "", style }: { className?: string; style?: React.CSSProperties }) {
   return (
@@ -480,11 +508,7 @@ function Hero() {
           <div className="mt-9 flex flex-col gap-3 sm:flex-row" id="apply">
             <HeroApplyCTA />
             <a
-              href="#collaborate"
-              onClick={(e) => {
-                e.preventDefault();
-                scrollToSection("collaborate");
-              }}
+              href={`mailto:${COLLAB_EMAIL}?subject=Collaboration%20with%20QCU%20MSC`}
               className="inline-flex items-center justify-center gap-2 rounded-full bg-white/95 px-6 py-3.5 font-heading text-sm font-semibold text-brand-blue-deep shadow-lg transition hover:-translate-y-0.5 hover:bg-white"
             >
               Collaborate With Us
@@ -673,16 +697,7 @@ function RocketVisual() {
           />
           <Cloud className="-right-8 -bottom-6 w-60 opacity-90" />
 
-          {/* Floating chips */}
-          <span className="absolute left-4 top-6 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-brand-blue-deep shadow-sm">
-            +12 hackathons won
-          </span>
-          <span className="absolute right-4 top-20 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-brand-blue-deep shadow-sm">
-            Azure · GitHub · AI
-          </span>
-          <span className="absolute bottom-14 left-6 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-brand-blue-deep shadow-sm">
-            350+ members
-          </span>
+
         </div>
       </div>
     </div>
@@ -693,7 +708,7 @@ function CollaborateCard() {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(COLLAB_EMAIL);
+      await navigator.clipboard.writeText(PARTNERSHIP_EMAIL);
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     } catch {
@@ -719,7 +734,7 @@ function CollaborateCard() {
       </div>
       <div className="flex flex-col gap-2 sm:flex-row">
         <a
-          href={`mailto:${COLLAB_EMAIL}?subject=Collaboration%20with%20QCU%20MSC`}
+          href={`mailto:${PARTNERSHIP_EMAIL}?subject=Partnership%20with%20QCU%20MSC`}
           className="inline-flex items-center justify-center gap-2 rounded-full px-5 py-3 font-heading text-sm font-semibold text-white shadow-lg"
           style={{ background: "var(--gradient-cta-alt)" }}
         >
@@ -746,6 +761,9 @@ function CollaborateCard() {
 
 /* ---------- Initiatives ---------- */
 function Initiatives() {
+  // If SHOW_COMING_SOON is true OR EVENTS array is empty, show the coming soon design
+  const showComingSoon = SHOW_COMING_SOON || EVENTS.length === 0;
+
   return (
     <section id="initiatives" className="relative mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-24">
       <div className="grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4 sm:flex sm:justify-between">
@@ -765,8 +783,8 @@ function Initiatives() {
         </Link>
       </div>
 
-      {EVENTS.length === 0 ? (
-        <EmptyEvents />
+      {showComingSoon ? (
+        <ComingSoonEvents />
       ) : (
         <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {EVENTS.slice(0, 3).map((e) => (
@@ -851,6 +869,57 @@ function EventCard({ event }: { event: EventItem }) {
   );
 }
 
+/* ---------- Coming Soon Events Layer ---------- */
+function ComingSoonEvents() {
+  return (
+    <div className="mt-8 overflow-hidden rounded-3xl glass-strong p-8 sm:p-12">
+      <div className="flex flex-col items-center justify-center text-center">
+        <div className="relative">
+          <div
+            className="absolute -inset-8 rounded-full blur-3xl opacity-30"
+            style={{ background: "var(--brand-orange)" }}
+          />
+          <div className="relative">
+            <h3 className="font-display text-3xl font-bold text-brand-blue-deep sm:text-4xl">
+              Coming Soon
+            </h3>
+            <div
+              className="mt-2 h-1 w-20 rounded-full mx-auto"
+              style={{ background: "var(--gradient-cta)" }}
+            />
+            <p className="mt-4 max-w-lg font-body text-sm text-brand-blue-deep/70">
+              Exciting initiatives are brewing for this semester! Follow our socials to be the first
+              to know when we launch.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+              <SocialPill
+                icon={<Instagram className="size-4" />}
+                label="Instagram"
+                href={SOCIAL_LINKS.instagram}
+              />
+              <SocialPill
+                icon={<Facebook className="size-4" />}
+                label="Facebook"
+                href={SOCIAL_LINKS.facebook}
+              />
+              <SocialPill
+                icon={<Linkedin className="size-4" />}
+                label="LinkedIn"
+                href={SOCIAL_LINKS.linkedin}
+              />
+              <SocialPill
+                icon={<FaTiktok className="size-4" />}
+                label="TikTok"
+                href={SOCIAL_LINKS.tiktok}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EmptyEvents() {
   return (
     <div className="mt-8 overflow-hidden rounded-3xl glass-strong p-8 sm:p-12">
@@ -871,9 +940,21 @@ function EmptyEvents() {
             announcements.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <SocialPill icon={<Instagram className="size-4" />} label="Instagram" />
-            <SocialPill icon={<Facebook className="size-4" />} label="Facebook" />
-            <SocialPill icon={<Linkedin className="size-4" />} label="LinkedIn" />
+            <SocialPill
+              icon={<Instagram className="size-4" />}
+              label="Instagram"
+              href={SOCIAL_LINKS.instagram}
+            />
+            <SocialPill
+              icon={<Facebook className="size-4" />}
+              label="Facebook"
+              href={SOCIAL_LINKS.facebook}
+            />
+            <SocialPill
+              icon={<Linkedin className="size-4" />}
+              label="LinkedIn"
+              href={SOCIAL_LINKS.linkedin}
+            />
           </div>
         </div>
       </div>
@@ -881,10 +962,20 @@ function EmptyEvents() {
   );
 }
 
-function SocialPill({ icon, label }: { icon: React.ReactNode; label: string }) {
+function SocialPill({
+  icon,
+  label,
+  href,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  href?: string;
+}) {
   return (
     <a
-      href="#footer"
+      href={href || "#footer"}
+      target={href ? "_blank" : undefined}
+      rel={href ? "noreferrer" : undefined}
       className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3.5 py-1.5 text-xs font-semibold text-brand-blue-deep hover:bg-white"
     >
       {icon} {label}
@@ -919,7 +1010,7 @@ function WallOfLogos() {
 }
 
 function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: string[] }) {
-  const perSlide = 4;
+  const perSlide = 5;
   const slides: Partner[][] = [];
   for (let i = 0; i < partners.length; i += perSlide) {
     slides.push(partners.slice(i, i + perSlide));
@@ -955,7 +1046,7 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
                   className="group flex w-full max-w-[8rem] flex-col items-center gap-2 sm:w-28"
                 >
                   <div
-                    className="relative grid aspect-square w-20 place-items-center rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
+                    className="relative grid aspect-square w-20 place-items-center overflow-hidden rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
                     style={{
                       background:
                         "radial-gradient(circle at 30% 25%, color-mix(in oklab, white 95%, transparent), color-mix(in oklab, white 60%, transparent))",
@@ -972,16 +1063,12 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
                         opacity: 0.55,
                       }}
                     />
-                    {/* object-contain + square container preserves each
-                        logo's native aspect ratio (all four source SVGs
-                        are 1:1, but this holds even if that changes) —
-                        never crops or stretches the mark. */}
                     <img
                       src={p.logo}
                       alt={`${p.name} logo`}
                       loading="lazy"
                       decoding="async"
-                      className="relative h-full w-full object-contain"
+                      className="relative h-full w-full object-cover"
                     />
                   </div>
                   <span className="text-center font-heading text-xs font-semibold tracking-tight text-brand-blue-deep/80 sm:text-sm">
@@ -1021,12 +1108,28 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
 /* ---------- Footer ---------- */
 function SocialFooter() {
   const socials = [
-    { icon: Instagram, label: "Instagram", href: "https://instagram.com" },
-    { icon: Facebook, label: "Facebook", href: "https://facebook.com" },
-    { icon: Linkedin, label: "LinkedIn", href: "https://linkedin.com" },
-    { icon: Twitter, label: "X / Twitter", href: "https://twitter.com" },
-    { icon: Youtube, label: "YouTube", href: "https://youtube.com" },
+    {
+      icon: Instagram,
+      label: "Instagram",
+      href: SOCIAL_LINKS.instagram,
+    },
+    {
+      icon: Facebook,
+      label: "Facebook",
+      href: SOCIAL_LINKS.facebook,
+    },
+    {
+      icon: Linkedin,
+      label: "LinkedIn",
+      href: SOCIAL_LINKS.linkedin,
+    },
+    {
+      icon: FaTiktok,
+      label: "TikTok",
+      href: SOCIAL_LINKS.tiktok,
+    },
   ];
+
   return (
     <footer id="footer" className="relative z-10 mt-10 px-4 pb-10 sm:px-8">
       <div className="mx-auto max-w-7xl rounded-3xl glass-strong p-5 sm:p-8">

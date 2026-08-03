@@ -23,21 +23,41 @@ import { authClient } from "@/lib/auth-client";
 import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/apply/account")({
-  validateSearch: (search: Record<string, unknown>) => {
+  validateSearch: (search: Record<string, unknown>): { token?: string } => {
     return {
       token: search.token as string | undefined,
     };
   },
   head: () => ({
     meta: [
-      { title: "Claim your cockpit · QCU MSC" },
+      { title: "Account Setup · QCU MSC" },
       {
         name: "description",
         content:
-          "Set your password and unlock your QCU MSC mission control to follow your application across the stars.",
+          "Set your password and unlock your QCU MSC portal account to follow your application status.",
       },
     ],
   }),
+  errorComponent: ({ error }: { error: Error }) => (
+    <div className="relative min-h-screen flex items-center justify-center p-4 text-center text-white" style={{ background: "var(--gradient-space)" }}>
+      <SkyBackdrop variant="space" />
+      <div className="relative z-10 max-w-md w-full rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
+        <h2 className="font-display text-2xl font-bold text-red-500">Account Setup Error</h2>
+        <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
+          {error?.message || "An unexpected error occurred during account setup."}
+        </p>
+        <div className="pt-2">
+          <Link
+            to="/apply"
+            className="inline-flex items-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+            style={{ background: "var(--gradient-cta)" }}
+          >
+            <ArrowLeft className="size-4" /> Return to Application
+          </Link>
+        </div>
+      </div>
+    </div>
+  ),
   component: ApplyAccountPage,
 });
 
@@ -51,6 +71,7 @@ type Applicant = {
   firstName?: string;
   lastName?: string;
   middleInitial?: string;
+  setupToken?: string;
 };
 
 function ApplyAccountPage() {
@@ -64,23 +85,27 @@ function ApplyAccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => !!token);
 
   useEffect(() => {
     clearAccountRedirect();
-    
+
     if (token) {
       setLoading(true);
       setTokenError(null);
       fetch(getApiEndpoint("/api/v1/users/validate-setup-token"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token }),
       })
         .then((res) => {
           if (!res.ok) {
             return res.json().then((json) => {
-              throw new Error(json.errors?.[0] || "Invalid or expired setup link.");
+              throw new Error(
+                json.message ||
+                  (Array.isArray(json.errors) ? json.errors[0] : null) ||
+                  "Invalid or expired setup link."
+              );
             });
           }
           return res.json();
@@ -97,6 +122,7 @@ function ApplyAccountPage() {
               firstName: json.data.firstName,
               lastName: json.data.lastName,
               middleInitial: json.data.middleInitial || "",
+              setupToken: token,
             });
           } else {
             setTokenError("Could not retrieve applicant details.");
@@ -137,9 +163,14 @@ function ApplyAccountPage() {
     setSubmitting(true);
 
     try {
-      const firstName = applicant.firstName || (applicant.fullName.trim().split(" ").slice(1).join(" ") || "");
-      const lastName = applicant.lastName || (applicant.fullName.trim().split(" ")[0] || "");
+      const firstName = applicant.firstName || (applicant.fullName?.trim().split(" ").slice(1).join(" ") || "");
+      const lastName = applicant.lastName || (applicant.fullName?.trim().split(" ")[0] || "");
       const middleInitial = applicant.middleInitial || "";
+      const effectiveSetupToken = token || applicant.setupToken || "";
+
+      if (!effectiveSetupToken) {
+        throw new Error("Setup token is missing. Please click the setup link in your email to create your account.");
+      }
 
       const signUpRes = await authClient.signUp.email({
         email: applicant.email,
@@ -148,6 +179,7 @@ function ApplyAccountPage() {
         studentId: applicant.studentId,
         firstName,
         lastName,
+        setupToken: effectiveSetupToken,
         ...(middleInitial ? { middleInitial } : {}),
       } as any);
 
@@ -155,20 +187,23 @@ function ApplyAccountPage() {
         throw new Error(signUpRes.error.message || "Failed to create account.");
       }
 
-      if (applicant.applicantId) {
-        // Now link the applicant ID with the newly created user
-        try {
-          const linkRes = await authClient.$fetch(`${API_URL}/users/link-applicant`, {
-            method: "POST",
-            body: { applicantId: applicant.applicantId }
-          }) as any;
-          
-          if (linkRes && linkRes.success === false) {
-            console.error("Failed to link applicant to user account:", linkRes.message);
-          }
-        } catch (linkErr) {
-          console.error("Failed to link applicant to user account:", linkErr);
+      // Now link the applicant record with the newly created user account
+      try {
+        const linkRes = await fetch(getApiEndpoint("/users/link-applicant"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...(applicant.applicantId ? { applicantId: applicant.applicantId } : {}),
+            email: applicant.email,
+            studentId: applicant.studentId,
+          }),
+        });
+        const linkJson = await linkRes.json();
+        if (!linkRes.ok || linkJson.success === false) {
+          console.error("Failed to link applicant to user account:", linkJson?.message);
         }
+      } catch (linkErr) {
+        console.error("Failed to link applicant to user account:", linkErr);
       }
 
       try {
@@ -210,21 +245,57 @@ function ApplyAccountPage() {
   }
 
   if (tokenError) {
+    const isAlreadySignedUp = tokenError.toLowerCase().includes("sign in");
     return (
       <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
         <SkyBackdrop variant="space" />
         <div className="relative z-10 max-w-md w-full mx-4 rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
-          <h2 className="font-display text-2xl font-bold text-red-500">Launch Code Expired</h2>
+          <h2 className="font-display text-2xl font-bold text-white">
+            {isAlreadySignedUp ? "Account Already Created" : "Setup Link Expired"}
+          </h2>
           <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
             {tokenError}
+          </p>
+          <div className="pt-2 flex flex-col gap-3">
+            {isAlreadySignedUp ? (
+              <Link
+                to="/portal/login"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                style={{ background: "var(--gradient-cta)" }}
+              >
+                Sign In <ArrowRight className="size-4" />
+              </Link>
+            ) : (
+              <Link
+                to="/apply"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                style={{ background: "var(--gradient-cta)" }}
+              >
+                <ArrowLeft className="size-4" /> Start Application
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!applicant) {
+    return (
+      <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
+        <SkyBackdrop variant="space" />
+        <div className="relative z-10 max-w-md w-full mx-4 rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
+          <h2 className="font-display text-2xl font-bold text-white">No Active Application</h2>
+          <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
+            We couldn't find your applicant details. Please start a new application or click the setup link sent to your email.
           </p>
           <div className="pt-2">
             <Link
               to="/apply"
-              className="inline-flex items-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+              className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
               style={{ background: "var(--gradient-cta)" }}
             >
-              <ArrowLeft className="size-4" /> Start New Application
+              <ArrowLeft className="size-4" /> Start Application
             </Link>
           </div>
         </div>
@@ -268,7 +339,7 @@ function ApplyAccountPage() {
           <div className="relative min-w-0 lg:sticky lg:top-6 lg:self-start">
             <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/85 drop-shadow">
               <Compass className="size-3.5 text-brand-orange" />
-              <span>Chapter 8 · Claim your cockpit</span>
+              <span>Chapter 8 · Create your account</span>
             </div>
 
             <h1 className="mt-4 font-display text-4xl font-extrabold leading-[1.0] tracking-tight text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.45)] sm:text-6xl lg:text-7xl">
@@ -277,12 +348,12 @@ function ApplyAccountPage() {
             </h1>
 
             <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">
-              Beautiful work, {firstName}. Your application is already drifting toward Mission Control —
-              now we just need a key to your cockpit so you can watch its trajectory in real time.
+              Beautiful work, {firstName}. Your application is already saved —
+              now we just need a password for your account so you can track your status in real time.
             </p>
 
             <p className="mt-3 max-w-md font-body text-sm text-white/70 drop-shadow">
-              Set a password for your verified QCU email. From the next screen forward, your applicant
+              Set a password for your verified personal email. From the next screen forward, your applicant
               dashboard will show every checkpoint as it lights up.
             </p>
 
@@ -319,17 +390,17 @@ function ApplyAccountPage() {
                   Almost ready for liftoff.
                 </p>
                 <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
-                  Create your cockpit account
+                  Create your portal account
                 </h2>
                 <p className="font-body text-sm text-brand-blue-deep/65">
-                  This is the same QCU email we just verified — no need to retype it.
+                  This is the personal email address linked to your application — no need to retype it.
                 </p>
               </div>
 
               <div className="mt-7 space-y-5">
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-                    <Mail className="size-4" /> Verified QCU email
+                    <Mail className="size-4" /> Verified personal email
                   </label>
                   <Input
                     type="email"
