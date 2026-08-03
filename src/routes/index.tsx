@@ -25,7 +25,6 @@ import bitsLogo from "../assets/images/partners/bits.svg";
 import mscPupLogo from "../assets/images/partners/msc-pup.svg";
 import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
 import datacampDonatesLogo from "../assets/images/partners/datacamp-donates.svg";
-import commonGroundDonAntonio from "../assets/images/partners/common-ground-don-antonio.svg";
 import mscBulsuLogo from "../assets/images/partners/msc-bulsu.svg";
 import mscLpubLogo from "../assets/images/partners/msc-lpub.svg";
 import mscNudLogo from "../assets/images/partners/msc-nud.svg";
@@ -112,7 +111,6 @@ const PARTNERS: Partner[] = [
   { name: "MSC PUP", logo: mscPupLogo },
   { name: "Data Engineering Pilipinas", logo: dataEngineeringPilipinasLogo },
   { name: "DataCamp Donates", logo: datacampDonatesLogo },
-  { name: "Common Ground Don Antonio", logo: commonGroundDonAntonio },
   { name: "MSC BULSU", logo: mscBulsuLogo },
   { name: "MSC LPUB", logo: mscLpubLogo },
   { name: "MSC NUD", logo: mscNudLogo },
@@ -699,16 +697,7 @@ function RocketVisual() {
           />
           <Cloud className="-right-8 -bottom-6 w-60 opacity-90" />
 
-          {/* Floating chips */}
-          <span className="absolute left-4 top-6 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-brand-blue-deep shadow-sm">
-            +12 hackathons won
-          </span>
-          <span className="absolute right-4 top-20 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-brand-blue-deep shadow-sm">
-            Azure · GitHub · AI
-          </span>
-          <span className="absolute bottom-14 left-6 rounded-full bg-white/90 px-3 py-1 text-[11px] font-semibold text-brand-blue-deep shadow-sm">
-            350+ members
-          </span>
+
         </div>
       </div>
     </div>
