@@ -14,11 +14,13 @@ import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 
 import {
+  getPortalUser,
   routeForRole,
   setPortalUser,
   usePortalUser,
   type PortalRole,
 } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
 
 type NavItem = {
   to: string;
@@ -28,6 +30,7 @@ type NavItem = {
 
 const MEMBER_NAV: NavItem[] = [
   { to: "/portal/dashboard", label: "Workspace", icon: LayoutDashboard },
+  { to: "/portal/inbox", label: "M&D Inbox", icon: Bell },
   { to: "/portal/profile", label: "Profile", icon: UserIcon },
 ];
 
@@ -59,6 +62,10 @@ export function PortalShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // "checking" until the backend session has been resolved at least once.
+  // Never bounce to /portal/login while this is true — that race is what made
+  // fresh sign-ups land back on the login screen.
+  const [sessionState, setSessionState] = useState<"checking" | "valid" | "invalid">("checking");
 
   useEffect(() => {
     setMounted(true);
@@ -66,20 +73,105 @@ export function PortalShell({
 
   useEffect(() => {
     if (!mounted) return;
+    let cancelled = false;
+
+    const bounce = () => {
+      if (cancelled) return;
+      setPortalUser(null);
+      setSessionState("invalid");
+      void navigate({ to: "/portal/login", replace: true });
+    };
+
+    const syncSession = async () => {
+      // Cold Azure Function starts and slow Set-Cookie propagation can make the
+      // first getSession() miss. Retry a few times before treating the user as
+      // signed out; only a definitive "no user" after all attempts bounces.
+      const MAX_ATTEMPTS = 3;
+      const RETRY_DELAY_MS = 600;
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        if (cancelled) return;
+        try {
+          const { data, error } = await authClient.getSession();
+
+          if (!error && data?.user) {
+            const backendUser = data.user as any;
+
+            if (backendUser.role === "ADMIN_HR" || backendUser.role === "ADMIN_LOGISTICS") {
+              // Admin accounts are forbidden in the Student Portal.
+              bounce();
+              return;
+            }
+
+            let backendPortalRole: PortalRole = "restricted";
+            if (backendUser.role === "APPLICANT") {
+              backendPortalRole = "applicant";
+            } else if (backendUser.role === "MEMBER") {
+              backendPortalRole = "member";
+            }
+
+            if (cancelled) return;
+
+            // The backend session is the source of truth for identity and role.
+            // Always overwrite the localStorage copy so a tampered/stale entry
+            // can never grant access to a portal area.
+            const cachedUser = getPortalUser();
+            const resolved = {
+              email: backendUser.email,
+              fullName:
+                backendUser.name ||
+                `${backendUser.firstName || ""} ${backendUser.lastName || ""}`.trim() ||
+                "User",
+              studentNumber: backendUser.studentId || "",
+              role: backendPortalRole,
+            };
+            if (
+              !cachedUser ||
+              cachedUser.role !== resolved.role ||
+              cachedUser.email !== resolved.email ||
+              cachedUser.studentNumber !== resolved.studentNumber ||
+              cachedUser.fullName !== resolved.fullName
+            ) {
+              setPortalUser(resolved);
+            }
+
+            setSessionState("valid");
+            return;
+          }
+        } catch (err) {
+          console.error(`Session sync attempt ${attempt} failed:`, err);
+        }
+
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+        }
+      }
+
+      bounce();
+    };
+
+    void syncSession();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, navigate]);
+
+  useEffect(() => {
+    if (!mounted || sessionState !== "valid") return;
     if (!user) {
-      void navigate({ to: "/portal/login" });
+      void navigate({ to: "/portal/login", replace: true });
       return;
     }
     if (user.role !== requireRole) {
       void navigate({ to: routeForRole(user.role) });
     }
-  }, [mounted, user, requireRole, navigate]);
+  }, [mounted, sessionState, user, requireRole, navigate]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  if (!mounted || !user || user.role !== requireRole) {
+  if (!mounted || sessionState !== "valid" || !user || user.role !== requireRole) {
     return <div className="min-h-screen" style={{ background: "var(--gradient-space)" }} />;
   }
 
@@ -96,8 +188,18 @@ export function PortalShell({
     .toUpperCase();
 
   const signOut = () => {
-    setPortalUser(null);
-    void navigate({ to: "/portal/login" });
+    // Kill the backend session first — clearing localStorage alone leaves a
+    // live session cookie that anyone on the device could resume.
+    void (async () => {
+      try {
+        await authClient.signOut();
+      } catch (err) {
+        console.error("Sign out failed:", err);
+      } finally {
+        setPortalUser(null);
+        void navigate({ to: "/portal/login", replace: true });
+      }
+    })();
   };
 
   const firstName = user.fullName.split(" ")[0];
@@ -189,27 +291,28 @@ export function PortalShell({
             {/* Scrollable content */}
             <div className="flex-1 overflow-y-auto px-5 py-8 sm:px-10 sm:py-10">
               {/* Page header */}
-              <div className="mb-10 sm:mb-12">
-                <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-brand-blue-deep sm:text-6xl">
-                  {title.includes(",") ? (
-                    <>
-                      {title.split(",")[0]},
-                      <br />
-                      <span className="text-brand-blue">
-                        {title.split(",").slice(1).join(",").trim() || firstName}
-                      </span>
-                    </>
-                  ) : (
-                    title
+              {user.role === "member" && (
+                <div className="mb-10 sm:mb-12">
+                  <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-brand-blue-deep sm:text-6xl">
+                    {title.includes(",") ? (
+                      <>
+                        {title.split(",")[0]},
+                        <br />
+                        <span className="text-brand-blue">
+                          {title.split(",").slice(1).join(",").trim() || firstName}
+                        </span>
+                      </>
+                    ) : (
+                      title
+                    )}
+                  </h1>
+                  {subtitle && (
+                    <p className="mt-4 max-w-lg font-body text-base text-brand-blue-deep/90 sm:text-lg">
+                      {subtitle}
+                    </p>
                   )}
-                </h1>
-                {subtitle && (
-                  <p className="mt-4 max-w-lg font-body text-base text-brand-blue-deep/90 sm:text-lg">
-                    {subtitle}
-                  </p>
-                )}
-
-              </div>
+                </div>
+              )}
 
               {children}
             </div>
@@ -283,7 +386,10 @@ function SidebarBody({
       </div>
 
       <div className="mt-auto border-t border-brand-blue-deep/10 p-8">
-        <div className="mb-6 flex items-center gap-3">
+        <Link
+          to="/portal/profile"
+          className="mb-6 flex items-center gap-3 rounded-2xl p-2 transition-colors hover:bg-brand-blue-deep/5"
+        >
           <div className="grid size-10 shrink-0 place-items-center rounded-full border border-brand-blue-deep/15 bg-brand-blue-deep/5 font-display text-xs font-extrabold text-brand-blue-deep">
             {initials || "·"}
           </div>
@@ -295,7 +401,7 @@ function SidebarBody({
               {user.email}
             </p>
           </div>
-        </div>
+        </Link>
         <button
           type="button"
           onClick={onSignOut}

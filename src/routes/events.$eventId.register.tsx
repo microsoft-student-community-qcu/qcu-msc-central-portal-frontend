@@ -1,4 +1,4 @@
-import { createFileRoute, Link, useNavigate, notFound } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, notFound, redirect } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -31,8 +31,15 @@ const IdUploadScanner = lazy(() =>
   import("@/components/IdUploadScanner").then((m) => ({ default: m.IdUploadScanner })),
 );
 
-
 export const Route = createFileRoute("/events/$eventId/register")({
+  // Reyewsss
+  // Route-level guard: runs before the loader, so a direct URL visit never
+  // reaches findEvent()/notFound() logic below — it's redirected first,
+  // regardless of whether eventId is even valid.
+  beforeLoad: () => {
+    throw redirect({ to: "/coming-soon" });
+  },
+  // --------------------------------------------------------------
   loader: ({ params }) => {
     const event = findEvent(params.eventId);
     if (!event) throw notFound();
@@ -55,7 +62,10 @@ export const Route = createFileRoute("/events/$eventId/register")({
       <div>
         <h1 className="font-display text-2xl font-extrabold">Something knocked us off course</h1>
         <p className="mt-2 text-sm text-white/70">{(error as Error).message}</p>
-        <Link to="/events" className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-brand-blue-deep">
+        <Link
+          to="/events"
+          className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-brand-blue-deep"
+        >
           <ArrowLeft className="size-4" /> Back to Space
         </Link>
       </div>
@@ -66,13 +76,17 @@ export const Route = createFileRoute("/events/$eventId/register")({
 
 function EventNotFound() {
   return (
-    <div className="relative grid min-h-screen place-items-center overflow-hidden p-6 text-center" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative grid min-h-screen place-items-center overflow-hidden p-6 text-center"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
       <div className="relative z-10 rounded-[2rem] glass-strong p-10 text-brand-blue-deep">
         <Rocket className="mx-auto size-10 text-brand-orange" />
         <h1 className="mt-4 font-display text-2xl font-extrabold">Mission not found</h1>
         <p className="mt-2 max-w-sm font-body text-sm text-brand-blue-deep/70">
-          That orbit doesn't match anything on the manifest. Pick a different mission from the events deck.
+          That orbit doesn't match anything on the manifest. Pick a different mission from the
+          events deck.
         </p>
         <Link
           to="/events"
@@ -88,13 +102,7 @@ function EventNotFound() {
 
 /* ---------- Types ---------- */
 
-type Step =
-  | "scan"
-  | "boarding"
-  | "launching"
-  | "launched"
-  | "duplicate";
-
+type Step = "scan" | "boarding" | "launching" | "launched" | "duplicate";
 
 type ExtractedId = {
   studentNumber: string;
@@ -155,7 +163,6 @@ function RegisterPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-
   const submitBoarding = (e: React.FormEvent) => {
     e.preventDefault();
     const next: typeof errors = {};
@@ -172,7 +179,10 @@ function RegisterPage() {
   const stage = stageMeta(step);
 
   return (
-    <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
+    <div
+      className="relative min-h-screen overflow-hidden"
+      style={{ background: "var(--gradient-space)" }}
+    >
       <SkyBackdrop variant="space" />
 
       <header className="relative z-20 mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-5 sm:px-8">
@@ -192,7 +202,8 @@ function RegisterPage() {
           to="/events"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/90 px-3 py-2 text-xs font-semibold text-brand-blue-deep shadow-md hover:bg-white sm:px-4 sm:text-sm"
         >
-          <ArrowLeft className="size-4" /> <span className="hidden sm:inline">Back to Space</span><span className="sm:hidden">Back to Space</span>
+          <ArrowLeft className="size-4" /> <span className="hidden sm:inline">Back to Space</span>
+          <span className="sm:hidden">Back to Space</span>
         </Link>
       </header>
 
@@ -217,13 +228,16 @@ function RegisterPage() {
               className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-10 animate-in fade-in slide-in-from-bottom-2 duration-300"
             >
               {step === "scan" && (
-                <Suspense fallback={<div className="grid place-items-center py-12 text-sm text-brand-blue-deep/70"><Loader2 className="size-5 animate-spin" /></div>}>
+                <Suspense
+                  fallback={
+                    <div className="grid place-items-center py-12 text-sm text-brand-blue-deep/70">
+                      <Loader2 className="size-5 animate-spin" />
+                    </div>
+                  }
+                >
                   <IdUploadScanner onSubmit={handleScanComplete} />
                 </Suspense>
               )}
-
-
-
 
               {step === "boarding" && extracted && (
                 <BoardingStep
@@ -245,13 +259,17 @@ function RegisterPage() {
                 <LaunchedStep
                   event={event}
                   extracted={extracted}
-                  email={email || "you@qcu.edu.ph"}
+                  email={email || "you@example.com"}
                   onDone={() => navigate({ to: "/events" })}
                 />
               )}
 
               {step === "duplicate" && extracted && (
-                <DuplicateStep event={event} extracted={extracted} onDone={() => navigate({ to: "/events" })} />
+                <DuplicateStep
+                  event={event}
+                  extracted={extracted}
+                  onDone={() => navigate({ to: "/events" })}
+                />
               )}
             </div>
 
@@ -278,12 +296,18 @@ function stageMeta(step: Step): {
   progress: number;
 } {
   switch (step) {
-
     case "scan":
       return {
         eyebrow: "Mission clearance",
-        title: <>Claim your<br /><span className="text-brand-orange">seat in orbit</span></>,
-        subtitle: "Confirm your student status to reserve your spot on this mission. Your ID is verified on-device — no data leaves the ship.",
+        title: (
+          <>
+            Claim your
+            <br />
+            <span className="text-brand-orange">seat in orbit</span>
+          </>
+        ),
+        subtitle:
+          "Confirm your student status to reserve your spot on this mission. Your ID is verified on-device — no data leaves the ship.",
         stepLabel: "01",
         phase: "Clearance",
         progress: 40,
@@ -291,8 +315,15 @@ function stageMeta(step: Step): {
     case "boarding":
       return {
         eyebrow: "Boarding pass",
-        title: <>Tag your<br /><span className="text-brand-orange">manifest entry</span></>,
-        subtitle: "Almost cleared for launch. Add the name and email we'll print on your QR boarding pass.",
+        title: (
+          <>
+            Tag your
+            <br />
+            <span className="text-brand-orange">manifest entry</span>
+          </>
+        ),
+        subtitle:
+          "Almost cleared for launch. Add the name and email we'll print on your QR boarding pass.",
         stepLabel: "02",
         phase: "Boarding",
         progress: 70,
@@ -300,7 +331,13 @@ function stageMeta(step: Step): {
     case "launching":
       return {
         eyebrow: "Launch sequence",
-        title: <>Reserving your<br /><span className="text-brand-orange">seat in orbit</span></>,
+        title: (
+          <>
+            Reserving your
+            <br />
+            <span className="text-brand-orange">seat in orbit</span>
+          </>
+        ),
         subtitle: "Minting your QR ticket and prepping the dispatch email. Stand by for lift-off.",
         stepLabel: "03",
         phase: "Launching",
@@ -309,8 +346,15 @@ function stageMeta(step: Step): {
     case "launched":
       return {
         eyebrow: "Lift-off confirmed",
-        title: <>You're cleared for<br /><span className="text-brand-orange">arrival</span></>,
-        subtitle: "Your boarding pass is on its way. Show the QR at the door — see you on mission day.",
+        title: (
+          <>
+            You're cleared for
+            <br />
+            <span className="text-brand-orange">arrival</span>
+          </>
+        ),
+        subtitle:
+          "Your boarding pass is on its way. Show the QR at the door — see you on mission day.",
         stepLabel: "04",
         phase: "Cleared",
         progress: 100,
@@ -318,8 +362,15 @@ function stageMeta(step: Step): {
     case "duplicate":
       return {
         eyebrow: "Orbit already claimed",
-        title: <>This crew badge<br /><span className="text-brand-orange">is on the list</span></>,
-        subtitle: "That student number already has a seat. Check your email for the original boarding pass.",
+        title: (
+          <>
+            This crew badge
+            <br />
+            <span className="text-brand-orange">is on the list</span>
+          </>
+        ),
+        subtitle:
+          "That student number already has a seat. Check your email for the original boarding pass.",
         stepLabel: "—",
         phase: "Duplicate",
         progress: 100,
@@ -332,13 +383,23 @@ function stageMeta(step: Step): {
 function StepHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div>
-      <h3 className="font-display text-xl font-extrabold text-brand-blue-deep sm:text-2xl">{title}</h3>
+      <h3 className="font-display text-xl font-extrabold text-brand-blue-deep sm:text-2xl">
+        {title}
+      </h3>
       <p className="mt-1.5 font-body text-sm text-brand-blue-deep/65">{subtitle}</p>
     </div>
   );
 }
 
-function BriefStep({ event, onMember, onGeneral }: { event: FullEvent; onMember: () => void; onGeneral: () => void }) {
+function BriefStep({
+  event,
+  onMember,
+  onGeneral,
+}: {
+  event: FullEvent;
+  onMember: () => void;
+  onGeneral: () => void;
+}) {
   return (
     <div>
       <StepHeader
@@ -351,7 +412,8 @@ function BriefStep({ event, onMember, onGeneral }: { event: FullEvent; onMember:
           className="group relative overflow-hidden rounded-3xl p-6 text-left transition hover:-translate-y-1"
           style={{
             background: "linear-gradient(135deg, var(--brand-blue-deep), var(--brand-blue))",
-            boxShadow: "0 20px 40px -20px color-mix(in oklab, var(--brand-blue-deep) 55%, transparent)",
+            boxShadow:
+              "0 20px 40px -20px color-mix(in oklab, var(--brand-blue-deep) 55%, transparent)",
           }}
         >
           <Sparkles className="size-6 text-brand-yellow" />
@@ -377,7 +439,9 @@ function BriefStep({ event, onMember, onGeneral }: { event: FullEvent; onMember:
           <div className="mt-3 font-heading text-[10px] font-extrabold uppercase tracking-[0.2em] text-brand-blue-deep/60">
             Open admission
           </div>
-          <div className="mt-1 font-display text-lg font-bold text-brand-blue-deep">I'll scan my QCU ID</div>
+          <div className="mt-1 font-display text-lg font-bold text-brand-blue-deep">
+            I'll scan my QCU ID
+          </div>
           <p className="mt-1 font-body text-xs text-brand-blue-deep/60">
             No account needed — verify enrollment in seconds, get your ticket by email.
           </p>
@@ -407,7 +471,15 @@ function Meta({ icon, label }: { icon: React.ReactNode; label: string }) {
   );
 }
 
-function MemberConfirmStep({ event, onBack, onConfirm }: { event: FullEvent; onBack: () => void; onConfirm: () => void }) {
+function MemberConfirmStep({
+  event,
+  onBack,
+  onConfirm,
+}: {
+  event: FullEvent;
+  onBack: () => void;
+  onConfirm: () => void;
+}) {
   return (
     <div>
       <StepHeader
@@ -415,12 +487,19 @@ function MemberConfirmStep({ event, onBack, onConfirm }: { event: FullEvent; onB
         subtitle={`Lock in your seat for ${event.title}. We'll send the QR boarding pass to your QCU email.`}
       />
       <div className="mt-5 flex items-center gap-3 rounded-2xl border border-brand-blue-light/60 bg-brand-blue-light/25 p-4">
-        <div className="grid size-10 shrink-0 place-items-center rounded-xl text-white" style={{ background: "var(--brand-blue-deep)" }}>
+        <div
+          className="grid size-10 shrink-0 place-items-center rounded-xl text-white"
+          style={{ background: "var(--brand-blue-deep)" }}
+        >
           <ShieldCheck className="size-5" />
         </div>
         <div className="min-w-0">
-          <div className="font-heading text-[11px] font-bold uppercase tracking-[0.18em] text-brand-blue-deep/60">Signed in as</div>
-          <div className="truncate font-display text-base font-bold text-brand-blue-deep">Maya R. Salonga · 2023-08812</div>
+          <div className="font-heading text-[11px] font-bold uppercase tracking-[0.18em] text-brand-blue-deep/60">
+            Signed in as
+          </div>
+          <div className="truncate font-display text-base font-bold text-brand-blue-deep">
+            Maya R. Salonga · 2023-08812
+          </div>
         </div>
       </div>
       <div className="mt-7 flex flex-col-reverse gap-3 border-t border-white/60 pt-5 sm:flex-row sm:justify-between">
@@ -478,7 +557,9 @@ function BoardingStep({
       >
         <CheckCircle2 className="mt-0.5 size-5 shrink-0" style={{ color: event.accent }} />
         <div className="min-w-0 flex-1">
-          <div className="font-heading text-[10px] font-bold uppercase tracking-[0.18em] text-brand-blue-deep/60 sm:text-[11px]">Verified for mission access</div>
+          <div className="font-heading text-[10px] font-bold uppercase tracking-[0.18em] text-brand-blue-deep/60 sm:text-[11px]">
+            Verified for mission access
+          </div>
           <div className="mt-0.5 break-words font-display text-[13px] font-bold leading-snug text-brand-blue-deep sm:text-sm">
             {extracted.fullName}
             <span className="text-brand-blue-deep/50"> · </span>
@@ -488,7 +569,6 @@ function BoardingStep({
           </div>
         </div>
       </div>
-
 
       <div className="mt-5 grid gap-4">
         <Field label="Full name" icon={<User className="size-4" />} error={errors.name}>
@@ -505,7 +585,7 @@ function BoardingStep({
             type="email"
             value={email}
             onChange={(e) => onEmail(e.target.value)}
-            placeholder="you@qcu.edu.ph"
+            placeholder="you@example.com"
             aria-invalid={Boolean(errors.email)}
             className={inputClass(Boolean(errors.email))}
           />
@@ -578,15 +658,24 @@ function LaunchingStep() {
     <div className="py-12 text-center">
       <div className="relative mx-auto size-16">
         <div className="absolute inset-0 animate-ping rounded-full bg-brand-orange/30" />
-        <div className="absolute inset-2 grid place-items-center rounded-full text-white" style={{ background: "var(--gradient-cta)" }}>
+        <div
+          className="absolute inset-2 grid place-items-center rounded-full text-white"
+          style={{ background: "var(--gradient-cta)" }}
+        >
           <Rocket className="size-6" />
         </div>
       </div>
-      <p className="mt-6 font-display text-xl font-extrabold text-brand-blue-deep">Initiating launch sequence…</p>
-      <p className="mt-1 font-body text-sm text-brand-blue-deep/55">Reserving your seat and minting the QR boarding pass.</p>
+      <p className="mt-6 font-display text-xl font-extrabold text-brand-blue-deep">
+        Initiating launch sequence…
+      </p>
+      <p className="mt-1 font-body text-sm text-brand-blue-deep/55">
+        Reserving your seat and minting the QR boarding pass.
+      </p>
       <div className="mx-auto mt-6 flex items-center justify-center gap-2 text-brand-blue-deep/50">
         <Loader2 className="size-4 animate-spin" />
-        <span className="font-heading text-xs uppercase tracking-[0.2em]">T-minus a few seconds</span>
+        <span className="font-heading text-xs uppercase tracking-[0.2em]">
+          T-minus a few seconds
+        </span>
       </div>
     </div>
   );
@@ -629,7 +718,10 @@ function LaunchedStep({
 
   return (
     <div className="text-center">
-      <div className="mx-auto grid size-16 place-items-center rounded-2xl text-white" style={{ background: "var(--gradient-cta)" }}>
+      <div
+        className="mx-auto grid size-16 place-items-center rounded-2xl text-white"
+        style={{ background: "var(--gradient-cta)" }}
+      >
         <CheckCircle2 className="size-8" />
       </div>
       <h3 className="mt-4 font-display text-2xl font-extrabold text-brand-blue-deep">
@@ -642,14 +734,19 @@ function LaunchedStep({
 
       <div
         className="mx-auto mt-6 max-w-sm rounded-[2rem] border border-brand-blue-light bg-white p-5 text-left"
-        style={{ boxShadow: "0 25px 50px -25px color-mix(in oklab, var(--brand-blue-deep) 35%, transparent)" }}
+        style={{
+          boxShadow:
+            "0 25px 50px -25px color-mix(in oklab, var(--brand-blue-deep) 35%, transparent)",
+        }}
       >
         <FakeQR seed={payload} accent={event.accent} />
         <div className="mt-4">
           <div className="font-heading text-[10px] font-extrabold uppercase tracking-[0.2em] text-brand-blue-deep/55">
             {event.tag} · {event.date}
           </div>
-          <div className="mt-0.5 font-display text-base font-bold text-brand-blue-deep">{event.title}</div>
+          <div className="mt-0.5 font-display text-base font-bold text-brand-blue-deep">
+            {event.title}
+          </div>
           <div className="mt-1 font-body text-xs text-brand-blue-deep/60">
             {extracted.fullName} · {extracted.studentNumber}
           </div>
@@ -687,7 +784,7 @@ function qrCellsFor(seed: string, size: number) {
     h ^= h << 13;
     h ^= h >>> 17;
     h ^= h << 5;
-    out.push(((h >>> 0) % 100) < 48);
+    out.push((h >>> 0) % 100 < 48);
   }
   const isFinder = (r: number, c: number) => {
     const inBox = (br: number, bc: number) => r >= br && r < br + 7 && c >= bc && c < bc + 7;
@@ -731,10 +828,11 @@ function buildTicketSVG({
     if (!filled) continue;
     const x = qrX + c * cell;
     const y = qrY + r * cell;
-    rects.push(`<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" fill="#0b1f4d"/>`);
+    rects.push(
+      `<rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${cell.toFixed(2)}" height="${cell.toFixed(2)}" fill="#0b1f4d"/>`,
+    );
   }
-  const esc = (s: string) =>
-    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" font-family="Inter, system-ui, sans-serif">
   <defs>
@@ -762,7 +860,6 @@ function buildTicketSVG({
 </svg>`;
 }
 
-
 function DuplicateStep({
   event,
   extracted,
@@ -777,10 +874,14 @@ function DuplicateStep({
       <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-red-100 text-red-600">
         <AlertCircle className="size-7" />
       </div>
-      <h3 className="mt-4 font-display text-xl font-extrabold text-brand-blue-deep">This crew badge is already manifested</h3>
+      <h3 className="mt-4 font-display text-xl font-extrabold text-brand-blue-deep">
+        This crew badge is already manifested
+      </h3>
       <p className="mx-auto mt-2 max-w-md font-body text-sm text-brand-blue-deep/65">
-        Student number <span className="font-bold text-brand-blue-deep">{extracted.studentNumber}</span> already holds a seat for{" "}
-        <span className="font-bold text-brand-blue-deep">{event.title}</span>. Check your email for the original boarding pass, or reach out to the MSC team.
+        Student number{" "}
+        <span className="font-bold text-brand-blue-deep">{extracted.studentNumber}</span> already
+        holds a seat for <span className="font-bold text-brand-blue-deep">{event.title}</span>.
+        Check your email for the original boarding pass, or reach out to the MSC team.
       </p>
       <button
         onClick={onDone}
@@ -823,9 +924,7 @@ function MissionPanel({
 
       <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">{subtitle}</p>
 
-      <div
-        className="mt-7 flex w-full max-w-full items-center gap-3 rounded-2xl border border-white/25 bg-white/10 px-4 py-3 text-left backdrop-blur"
-      >
+      <div className="mt-7 flex w-full max-w-full items-center gap-3 rounded-2xl border border-white/25 bg-white/10 px-4 py-3 text-left backdrop-blur">
         <span
           className="grid size-10 shrink-0 place-items-center rounded-xl font-heading text-[10px] font-extrabold uppercase tracking-[0.15em] text-white"
           style={{ background: event.accent }}
@@ -848,8 +947,12 @@ function MissionPanel({
       <div className="mt-8 grid grid-cols-3 gap-2 rounded-2xl glass-strong p-3 sm:gap-3 sm:p-4">
         {stats.map((s) => (
           <div key={s.label} className="min-w-0 text-center">
-            <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-brand-blue-deep/60 sm:text-[10px] sm:tracking-[0.18em]">{s.label}</div>
-            <div className="mt-1 break-words font-display text-sm font-extrabold leading-tight text-brand-blue-deep sm:text-lg">{s.value}</div>
+            <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-brand-blue-deep/60 sm:text-[10px] sm:tracking-[0.18em]">
+              {s.label}
+            </div>
+            <div className="mt-1 break-words font-display text-sm font-extrabold leading-tight text-brand-blue-deep sm:text-lg">
+              {s.value}
+            </div>
           </div>
         ))}
       </div>
@@ -872,7 +975,10 @@ function DestinationPlanet({ accent }: { accent: string }) {
   return (
     <div aria-hidden className="relative size-full">
       <div className="absolute left-1/2 top-1/2 size-56 -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-white/25 animate-orbit-slow">
-        <span className="absolute -top-1.5 left-1/2 size-3 -translate-x-1/2 rounded-full shadow-[0_0_18px_rgba(255,255,255,0.6)]" style={{ background: accent }} />
+        <span
+          className="absolute -top-1.5 left-1/2 size-3 -translate-x-1/2 rounded-full shadow-[0_0_18px_rgba(255,255,255,0.6)]"
+          style={{ background: accent }}
+        />
       </div>
       <div className="absolute left-1/2 top-1/2 size-72 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15 animate-orbit-rev">
         <span className="absolute top-1/2 -right-1 size-2 -translate-y-1/2 rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.9)]" />
@@ -893,11 +999,9 @@ function DestinationPlanet({ accent }: { accent: string }) {
           }}
         />
       </div>
-      
     </div>
   );
 }
-
 
 /* ---------- QR ---------- */
 
@@ -914,7 +1018,7 @@ function FakeQR({ seed, accent }: { seed: string; accent: string }) {
       h ^= h << 13;
       h ^= h >>> 17;
       h ^= h << 5;
-      out.push(((h >>> 0) % 100) < 48);
+      out.push((h >>> 0) % 100 < 48);
     }
     return out;
   }, [seed]);
@@ -934,9 +1038,15 @@ function FakeQR({ seed, accent }: { seed: string; accent: string }) {
   return (
     <div
       className="grid aspect-square w-full overflow-hidden rounded-2xl p-3"
-      style={{ background: "white", border: "1px solid color-mix(in oklab, var(--brand-blue-deep) 8%, transparent)" }}
+      style={{
+        background: "white",
+        border: "1px solid color-mix(in oklab, var(--brand-blue-deep) 8%, transparent)",
+      }}
     >
-      <div className="grid h-full w-full" style={{ gridTemplateColumns: `repeat(${size}, 1fr)`, gap: "2px" }}>
+      <div
+        className="grid h-full w-full"
+        style={{ gridTemplateColumns: `repeat(${size}, 1fr)`, gap: "2px" }}
+      >
         {Array.from({ length: size * size }).map((_, i) => {
           const r = Math.floor(i / size);
           const c = i % size;

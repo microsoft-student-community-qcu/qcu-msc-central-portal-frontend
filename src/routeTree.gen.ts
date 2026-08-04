@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ComingSoonRouteImport } from './routes/coming-soon'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as EventsIndexRouteImport } from './routes/events.index'
 import { Route as ApplyIndexRouteImport } from './routes/apply.index'
@@ -21,10 +22,16 @@ import { Route as PortalInboxRouteImport } from './routes/portal.inbox'
 import { Route as PortalEventsRouteImport } from './routes/portal.events'
 import { Route as PortalDashboardRouteImport } from './routes/portal.dashboard'
 import { Route as PortalCertificatesRouteImport } from './routes/portal.certificates'
+import { Route as AuthSetupPasswordRouteImport } from './routes/auth.setup-password'
 import { Route as ApplyDashboardRouteImport } from './routes/apply.dashboard'
 import { Route as ApplyAccountRouteImport } from './routes/apply.account'
 import { Route as EventsEventIdRegisterRouteImport } from './routes/events.$eventId.register'
 
+const ComingSoonRoute = ComingSoonRouteImport.update({
+  id: '/coming-soon',
+  path: '/coming-soon',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -85,6 +92,11 @@ const PortalCertificatesRoute = PortalCertificatesRouteImport.update({
   path: '/portal/certificates',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthSetupPasswordRoute = AuthSetupPasswordRouteImport.update({
+  id: '/auth/setup-password',
+  path: '/auth/setup-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApplyDashboardRoute = ApplyDashboardRouteImport.update({
   id: '/apply/dashboard',
   path: '/apply/dashboard',
@@ -103,8 +115,10 @@ const EventsEventIdRegisterRoute = EventsEventIdRegisterRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
+  '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
   '/portal/events': typeof PortalEventsRoute
@@ -120,8 +134,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
+  '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
   '/portal/events': typeof PortalEventsRoute
@@ -138,8 +154,10 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/coming-soon': typeof ComingSoonRoute
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
+  '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
   '/portal/events': typeof PortalEventsRoute
@@ -157,8 +175,10 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
+    | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
     | '/portal/events'
@@ -174,8 +194,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
+    | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
     | '/portal/events'
@@ -191,8 +213,10 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/coming-soon'
     | '/apply/account'
     | '/apply/dashboard'
+    | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
     | '/portal/events'
@@ -209,8 +233,10 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ComingSoonRoute: typeof ComingSoonRoute
   ApplyAccountRoute: typeof ApplyAccountRoute
   ApplyDashboardRoute: typeof ApplyDashboardRoute
+  AuthSetupPasswordRoute: typeof AuthSetupPasswordRoute
   PortalCertificatesRoute: typeof PortalCertificatesRoute
   PortalDashboardRoute: typeof PortalDashboardRoute
   PortalEventsRoute: typeof PortalEventsRoute
@@ -227,6 +253,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/coming-soon': {
+      id: '/coming-soon'
+      path: '/coming-soon'
+      fullPath: '/coming-soon'
+      preLoaderRoute: typeof ComingSoonRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -311,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PortalCertificatesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/setup-password': {
+      id: '/auth/setup-password'
+      path: '/auth/setup-password'
+      fullPath: '/auth/setup-password'
+      preLoaderRoute: typeof AuthSetupPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apply/dashboard': {
       id: '/apply/dashboard'
       path: '/apply/dashboard'
@@ -337,8 +377,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ComingSoonRoute: ComingSoonRoute,
   ApplyAccountRoute: ApplyAccountRoute,
   ApplyDashboardRoute: ApplyDashboardRoute,
+  AuthSetupPasswordRoute: AuthSetupPasswordRoute,
   PortalCertificatesRoute: PortalCertificatesRoute,
   PortalDashboardRoute: PortalDashboardRoute,
   PortalEventsRoute: PortalEventsRoute,

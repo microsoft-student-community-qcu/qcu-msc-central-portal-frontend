@@ -4,6 +4,8 @@ import {
   ArrowLeft,
   ArrowRight,
   Compass,
+  Eye,
+  EyeOff,
   Lock,
   Mail,
   Orbit,
@@ -16,46 +18,177 @@ import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
 import { clearAccountRedirect } from "@/lib/application-flow";
 import { setPortalUser } from "@/lib/portal-auth";
+import { authClient } from "@/lib/auth-client";
+
+import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/apply/account")({
+  validateSearch: (search: Record<string, unknown>): { token?: string } => {
+    return {
+      token: search.token as string | undefined,
+    };
+  },
   head: () => ({
     meta: [
-      { title: "Claim your cockpit · QCU MSC" },
+      { title: "Account Setup · QCU MSC" },
       {
         name: "description",
         content:
-          "Set your password and unlock your QCU MSC mission control to follow your application across the stars.",
+          "Set your password and unlock your QCU MSC portal account to follow your application status.",
       },
     ],
   }),
+  errorComponent: ({ error }: { error: Error }) => (
+    <div className="relative min-h-screen flex items-center justify-center p-4 text-center text-white" style={{ background: "var(--gradient-space)" }}>
+      <SkyBackdrop variant="space" />
+      <div className="relative z-10 max-w-md w-full rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
+        <h2 className="font-display text-2xl font-bold text-red-500">Account Setup Error</h2>
+        <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
+          {error?.message || "An unexpected error occurred during account setup."}
+        </p>
+        <div className="pt-2">
+          <Link
+            to="/apply"
+            className="inline-flex items-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+            style={{ background: "var(--gradient-cta)" }}
+          >
+            <ArrowLeft className="size-4" /> Return to Application
+          </Link>
+        </div>
+      </div>
+    </div>
+  ),
   component: ApplyAccountPage,
 });
 
+type SessionIdentity = {
+  email?: string;
+  fullName?: string;
+  studentNumber?: string;
+};
+
+/**
+ * Confirms an authenticated backend session exists after sign-up.
+ * Retries briefly (cold starts / slow Set-Cookie), then falls back to an
+ * explicit sign-in. Returns the server's view of the user, or null if no
+ * session could be established (e.g. the session cookie was blocked).
+ */
+async function ensureSession(email: string, password: string): Promise<SessionIdentity | null> {
+  const read = async (): Promise<SessionIdentity | null> => {
+    try {
+      const { data, error } = await authClient.getSession();
+      if (error || !data?.user) return null;
+      const u = data.user as any;
+      return {
+        email: u.email,
+        fullName: u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || undefined,
+        studentNumber: u.studentId || undefined,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const found = await read();
+    if (found) return found;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+  }
+
+  // No session from sign-up — try an explicit sign-in with the credentials the
+  // user just set. Never log or persist the password beyond this call.
+  try {
+    const signIn = await authClient.signIn.email({ email, password });
+    if (signIn.error) return null;
+  } catch {
+    return null;
+  }
+
+  return read();
+}
+
 type Applicant = {
+  applicantId?: string;
   studentId: string;
   fullName: string;
   email: string;
   role: string;
   provisional: boolean;
+  firstName?: string;
+  lastName?: string;
+  middleInitial?: string;
+  setupToken?: string;
 };
 
 function ApplyAccountPage() {
   const navigate = useNavigate();
+  const { token } = Route.useSearch();
   const [applicant, setApplicant] = useState<Applicant | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tokenError, setTokenError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(() => !!token);
 
   useEffect(() => {
     clearAccountRedirect();
-    try {
-      const raw = sessionStorage.getItem("qcumsc.applicant");
-      if (raw) setApplicant(JSON.parse(raw) as Applicant);
-    } catch {
-      /* ignore */
+
+    if (token) {
+      setLoading(true);
+      setTokenError(null);
+      fetch(getApiEndpoint("/api/v1/users/validate-setup-token"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      })
+        .then((res) => {
+          if (!res.ok) {
+            return res.json().then((json) => {
+              throw new Error(
+                json.message ||
+                  (Array.isArray(json.errors) ? json.errors[0] : null) ||
+                  "Invalid or expired setup link."
+              );
+            });
+          }
+          return res.json();
+        })
+        .then((json) => {
+          if (json.success && json.data) {
+            setApplicant({
+              applicantId: json.data.applicantId,
+              studentId: json.data.studentId,
+              fullName: `${json.data.lastName}, ${json.data.firstName}${json.data.middleInitial ? " " + json.data.middleInitial : ""}`.trim(),
+              email: json.data.email,
+              role: "applicant",
+              provisional: false,
+              firstName: json.data.firstName,
+              lastName: json.data.lastName,
+              middleInitial: json.data.middleInitial || "",
+              setupToken: token,
+            });
+          } else {
+            setTokenError("Could not retrieve applicant details.");
+          }
+        })
+        .catch((err) => {
+          setTokenError(err.message || "Failed to validate setup token.");
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    } else {
+      try {
+        const raw = sessionStorage.getItem("qcumsc.applicant");
+        if (raw) setApplicant(JSON.parse(raw) as Applicant);
+      } catch {
+        /* ignore */
+      }
     }
-  }, []);
+  }, [token]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,29 +209,66 @@ function ApplyAccountPage() {
     setSubmitting(true);
 
     try {
-      const nameParts = applicant.fullName.trim().split(" ");
-      const firstName = nameParts[0] || "";
-      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(" ") : "";
+      const firstName = applicant.firstName || (applicant.fullName?.trim().split(" ").slice(1).join(" ") || "");
+      const lastName = applicant.lastName || (applicant.fullName?.trim().split(" ")[0] || "");
+      const middleInitial = applicant.middleInitial || "";
+      const effectiveSetupToken = token || applicant.setupToken || "";
 
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
-      const AUTH_URL = API_URL.replace("/api/v1", "/api/auth/sign-up/email");
-      
-      const res = await fetch(AUTH_URL, {
+      if (!effectiveSetupToken) {
+        throw new Error("Setup token is missing. Please click the setup link in your email to create your account.");
+      }
+
+      const signUpRes = await authClient.signUp.email({
+        email: applicant.email,
+        password,
+        name: applicant.fullName,
+        studentId: applicant.studentId,
+        firstName,
+        lastName,
+        setupToken: effectiveSetupToken,
+        ...(middleInitial ? { middleInitial } : {}),
+      } as any);
+
+      if (signUpRes.error) {
+        throw new Error(signUpRes.error.message || "Failed to create account.");
+      }
+
+      // Sign-up does not reliably leave us authenticated: the backend may have
+      // autoSignIn disabled, and cross-site session cookies get dropped by some
+      // browsers. Confirm we actually have a session, and sign in explicitly if
+      // not, BEFORE navigating — otherwise the portal guard bounces the user
+      // straight back to the login screen.
+      const session = await ensureSession(applicant.email, password);
+      if (!session) {
+        throw new Error(
+          "Your account was created, but we couldn't start a secure session in this browser. Please sign in to continue.",
+        );
+      }
+
+      // Link the applicant record to the new user account. This is an
+      // authenticated call, so the session cookie must be sent. It also sets
+      // emailVerified, so a silent failure here leaves the account half-created.
+      const applicantId = applicant.applicantId;
+      if (!applicantId) {
+        throw new Error(
+          "We couldn't identify your application record. Please open the setup link from your email again.",
+        );
+      }
+
+      const linkRes = await fetch(getApiEndpoint("/api/v1/users/link-applicant"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: applicant.fullName,
-          studentId: applicant.studentId,
-          lastName,
-          firstName,
-          email: applicant.email,
-          password
-        })
+        credentials: "include",
+        body: JSON.stringify({ applicantId }),
       });
+      const linkJson = await linkRes.json().catch(() => null);
 
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(json.message || "Failed to create account.");
+      // 409 means the applicant is already linked — that is a success for us.
+      if (!linkRes.ok && linkRes.status !== 409) {
+        throw new Error(
+          linkJson?.message ||
+            "Your account was created, but we couldn't link it to your application. Please contact QCU MSC support.",
+        );
       }
 
       try {
@@ -106,18 +276,21 @@ function ApplyAccountPage() {
           "qcumsc.account",
           JSON.stringify({ createdAt: new Date().toISOString() }),
         );
+        // The setup token is single-use now — don't leave it sitting in storage.
+        sessionStorage.removeItem("qcumsc.applicant");
       } catch {
         /* ignore */
       }
-      
+
+      // Trust the server's view of who this account is, not local form state.
       setPortalUser({
-        email: applicant.email,
-        fullName: applicant.fullName,
-        studentNumber: applicant.studentId,
+        email: session.email ?? applicant.email,
+        fullName: session.fullName ?? applicant.fullName,
+        studentNumber: session.studentNumber ?? applicant.studentId,
         role: "applicant",
       });
 
-      void navigate({ to: "/portal/tracking" });
+      void navigate({ to: "/portal/tracking", replace: true });
     } catch (err: any) {
       setError(err.message || "An error occurred during account creation.");
     } finally {
@@ -126,6 +299,77 @@ function ApplyAccountPage() {
   };
 
   const firstName = applicant?.fullName?.split(" ")[0] ?? "cadet";
+
+  if (loading) {
+    return (
+      <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
+        <SkyBackdrop variant="space" />
+        <div className="text-center text-white space-y-4 relative z-10">
+          <Orbit className="size-12 animate-spin mx-auto text-brand-orange" />
+          <p className="font-heading text-lg font-bold">Verifying launch codes...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (tokenError) {
+    const isAlreadySignedUp = tokenError.toLowerCase().includes("sign in");
+    return (
+      <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
+        <SkyBackdrop variant="space" />
+        <div className="relative z-10 max-w-md w-full mx-4 rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
+          <h2 className="font-display text-2xl font-bold text-white">
+            {isAlreadySignedUp ? "Account Already Created" : "Setup Link Expired"}
+          </h2>
+          <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
+            {tokenError}
+          </p>
+          <div className="pt-2 flex flex-col gap-3">
+            {isAlreadySignedUp ? (
+              <Link
+                to="/portal/login"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                style={{ background: "var(--gradient-cta)" }}
+              >
+                Sign In <ArrowRight className="size-4" />
+              </Link>
+            ) : (
+              <Link
+                to="/apply"
+                className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                style={{ background: "var(--gradient-cta)" }}
+              >
+                <ArrowLeft className="size-4" /> Start Application
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!applicant) {
+    return (
+      <div className="relative min-h-screen overflow-hidden flex items-center justify-center" style={{ background: "var(--gradient-space)" }}>
+        <SkyBackdrop variant="space" />
+        <div className="relative z-10 max-w-md w-full mx-4 rounded-[2rem] glass-strong p-8 text-center space-y-6 shadow-2xl">
+          <h2 className="font-display text-2xl font-bold text-white">No Active Application</h2>
+          <p className="font-body text-sm text-brand-blue-deep/80 leading-relaxed">
+            We couldn't find your applicant details. Please start a new application or click the setup link sent to your email.
+          </p>
+          <div className="pt-2">
+            <Link
+              to="/apply"
+              className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+              style={{ background: "var(--gradient-cta)" }}
+            >
+              <ArrowLeft className="size-4" /> Start Application
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -163,7 +407,7 @@ function ApplyAccountPage() {
           <div className="relative min-w-0 lg:sticky lg:top-6 lg:self-start">
             <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.22em] text-white/85 drop-shadow">
               <Compass className="size-3.5 text-brand-orange" />
-              <span>Chapter 8 · Claim your cockpit</span>
+              <span>Chapter 8 · Create your account</span>
             </div>
 
             <h1 className="mt-4 font-display text-4xl font-extrabold leading-[1.0] tracking-tight text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.45)] sm:text-6xl lg:text-7xl">
@@ -172,12 +416,12 @@ function ApplyAccountPage() {
             </h1>
 
             <p className="mt-5 max-w-md font-body text-base text-white/85 drop-shadow">
-              Beautiful work, {firstName}. Your application is already drifting toward Mission Control —
-              now we just need a key to your cockpit so you can watch its trajectory in real time.
+              Beautiful work, {firstName}. Your application is already saved —
+              now we just need a password for your account so you can track your status in real time.
             </p>
 
             <p className="mt-3 max-w-md font-body text-sm text-white/70 drop-shadow">
-              Set a password for your verified QCU email. From the next screen forward, your applicant
+              Set a password for your verified personal email. From the next screen forward, your applicant
               dashboard will show every checkpoint as it lights up.
             </p>
 
@@ -214,17 +458,17 @@ function ApplyAccountPage() {
                   Almost ready for liftoff.
                 </p>
                 <h2 className="font-display text-2xl font-bold leading-tight text-brand-blue-deep sm:text-3xl">
-                  Create your cockpit account
+                  Create your portal account
                 </h2>
                 <p className="font-body text-sm text-brand-blue-deep/65">
-                  This is the same QCU email we just verified — no need to retype it.
+                  This is the personal email address linked to your application — no need to retype it.
                 </p>
               </div>
 
               <div className="mt-7 space-y-5">
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
-                    <Mail className="size-4" /> Verified QCU email
+                    <Mail className="size-4" /> Verified personal email
                   </label>
                   <Input
                     type="email"
@@ -243,26 +487,44 @@ function ApplyAccountPage() {
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
                     <Lock className="size-4" /> Password
                   </label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
-                    className="h-12 bg-white/85 text-base"
-                  />
+                  <div className="relative">
+                    <Input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="At least 8 characters"
+                      className="h-12 bg-white/85 text-base pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-blue-deep/60 hover:text-brand-blue-deep transition-colors"
+                    >
+                      {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 <div>
                   <label className="mb-1.5 flex items-center gap-1.5 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/70">
                     <Lock className="size-4" /> Confirm password
                   </label>
-                  <Input
-                    type="password"
-                    value={confirm}
-                    onChange={(e) => setConfirm(e.target.value)}
-                    placeholder="Re-enter your password"
-                    className="h-12 bg-white/85 text-base"
-                  />
+                  <div className="relative">
+                    <Input
+                      type={showConfirm ? "text" : "password"}
+                      value={confirm}
+                      onChange={(e) => setConfirm(e.target.value)}
+                      placeholder="Re-enter your password"
+                      className="h-12 bg-white/85 text-base pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirm(!showConfirm)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-blue-deep/60 hover:text-brand-blue-deep transition-colors"
+                    >
+                      {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
                 </div>
 
                 {error && (

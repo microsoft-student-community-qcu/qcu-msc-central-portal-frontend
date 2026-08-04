@@ -5,13 +5,14 @@ import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
 import {
-  DEMO_ACCOUNTS,
   routeForRole,
   setPortalUser,
   type PortalUser,
   type PortalRole,
 } from "@/lib/portal-auth";
 import { authClient } from "@/lib/auth-client";
+
+import { getApiEndpoint } from "@/lib/api-config";
 
 export const Route = createFileRoute("/portal/login")({
   head: () => ({
@@ -35,38 +36,40 @@ function PortalLoginPage() {
       setError("Enter your email and password.");
       return;
     }
-    const demoAccount = DEMO_ACCOUNTS.find(
-      (a) => a.email.toLowerCase() === email.trim().toLowerCase(),
-    );
-    if (demoAccount) {
-      setPortalUser(demoAccount);
-      void navigate({ to: routeForRole(demoAccount.role) });
-      return;
-    }
 
     try {
-      const { data, error: authError } = await authClient.signIn.email({
-        email: email.trim(),
-        password,
+      const res = await fetch(getApiEndpoint("/api/v1/auth/student/sign-in"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.trim(),
+          password,
+        }),
+        credentials: "include",
       });
 
-      if (authError) {
-        setError(authError.message || "Failed to sign in. Please check your credentials.");
+      const resData = await res.json();
+
+      if (!res.ok) {
+        setError(resData.message || "Failed to sign in. Please check your credentials.");
         return;
       }
 
-      if (data?.user) {
+      if (resData?.user) {
+        const user = resData.user as any;
         let portalRole: PortalRole = "restricted";
-        if (data.user.role === "APPLICANT") {
+        if (user.role === "APPLICANT") {
           portalRole = "applicant";
-        } else if (data.user.role === "MEMBER") {
+        } else if (user.role === "MEMBER") {
           portalRole = "member";
         }
 
         const backendUser: PortalUser = {
-          email: data.user.email,
-          fullName: data.user.name || `${data.user.firstName || ""} ${data.user.lastName || ""}`.trim() || "User",
-          studentNumber: data.user.studentId || "",
+          email: user.email,
+          fullName: user.name || `${user.firstName || ""} ${user.lastName || ""}`.trim() || "User",
+          studentNumber: user.studentId || "",
           role: portalRole,
         };
 
@@ -79,10 +82,6 @@ function PortalLoginPage() {
     }
   };
 
-  const quickLogin = (account: PortalUser) => {
-    setPortalUser(account);
-    void navigate({ to: routeForRole(account.role) });
-  };
 
   return (
     <div className="relative min-h-screen overflow-hidden" style={{ background: "var(--gradient-space)" }}>
@@ -220,13 +219,13 @@ function PortalLoginPage() {
             <form onSubmit={onSubmit} className="space-y-5 rounded-[28px] glass-strong p-6 sm:p-8">
               <div>
                 <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
-                  QCU email
+                  Email address
                 </label>
                 <Input
                   type="email"
                   value={email}
                   onChange={(e) => { setEmail(e.target.value); setError(null); }}
-                  placeholder="you@qcu.edu.ph"
+                  placeholder="you@example.com"
                   className="h-12 bg-white/85"
                 />
               </div>
@@ -258,31 +257,6 @@ function PortalLoginPage() {
               </p>
             </form>
 
-            <div className="mt-5 rounded-[24px] border border-white/55 bg-white/55 p-5">
-              <div className="flex items-center gap-2 font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
-                <ShieldCheck className="size-4" /> Demo crew · quick board
-              </div>
-              <div className="mt-3 grid gap-2">
-                {DEMO_ACCOUNTS.map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    onClick={() => quickLogin(acc)}
-                    className="group flex items-center justify-between gap-3 rounded-2xl border border-brand-blue-light bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-brand-blue"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-heading text-[10px] font-bold uppercase tracking-[0.15em] text-brand-blue-deep/60">
-                        {acc.role}
-                      </span>
-                      <span className="font-display text-sm font-bold text-brand-blue-deep">
-                        {acc.fullName}
-                      </span>
-                    </div>
-                    <ArrowRight className="size-4 text-brand-blue-deep/70 transition group-hover:translate-x-1" />
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         </section>
       </main>
