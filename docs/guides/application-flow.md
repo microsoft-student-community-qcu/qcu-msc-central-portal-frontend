@@ -17,8 +17,9 @@ flowchart TD
     M -- "Scan a Different ID" --> A
     B -- "Duplicate (alreadySubmitted)" --> K["Informational Modal:<br/>Application Already Submitted"]
     K -- "Scan a Different ID" --> A
-    B -- "Fail (Attempts < 3)" --> A
-    B -- "Fail (Attempt 3)" --> D["Unlock Manual Entry"]
+    B -- "Fail (no ocrSessionId, attempts remain)" --> A
+    B -- "Fail (Attempt 3, ocrSessionId + manualRequired)" --> D["Unlock Manual Entry"]
+
     
     C --> E["Stage 02: Identity Confirmation (ConfirmIdStep)"]
     D --> E
@@ -66,21 +67,26 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 - Presents a full privacy notice under **Republic Act No. 10173 (Data Privacy Act of 2012)** covering: information collected (ID image, student number, contact details, academic records, COR/CV, application content), purposes of processing (enrollment verification, screening, status transmissions, portal account & membership management, anonymized reporting), disclosure limits, retention, and the data subject's rights.
 - **Validation is frontend-only**: the "I Agree — Continue to ID Verification" button stays disabled until the checkbox is ticked; an inline error appears if the user attempts to proceed unchecked. No consent request is sent to the backend.
 - On accept, the page transitions to `stage: "scan"` and only then is the OCR scanner (and its lazy `tesseract.js` chunk) reachable.
+- **Chunk-load resilience:** the scanner is loaded via `lazyWithRetry()` ([`src/lib/lazy-with-retry.ts`](../../src/lib/lazy-with-retry.ts)) instead of bare `React.lazy`. A dynamic import that fails (`TypeError: Importing a module script failed.`, typically a stale chunk after a redeploy or a flaky network) is retried twice with backoff; if it still fails, the page reloads once (rate-limited to one reload per 30s via `sessionStorage`) so the client picks up the current build. Only after that does the error surface to the error boundary.
 
 ---
 
 ## 🔒 Stage 01: On-Device OCR ID Verification & Draft Resumption
 
+> **Gate rule:** the Stage 02 confirm / manual-entry form is rendered **only** when the backend returned an `ocrSessionId`. A failed attempt with retries remaining creates no session (`ocrSessionId: null`), so the applicant stays on the scan step. Without this gate the applicant could type their details and then be blocked at submit because the payload had no session.
 
 1. **Scanner Component (`IdUploadScanner`)**:
    - Lazy-loaded `tesseract.js` chunk to keep initial bundle size small.
    - Captures photo from camera or user file upload.
+   - Accepts `error` and `busy` props: the error banner renders above the uploader, the confirm button shows **"Verifying…"** while the OCR request is in flight, and a failed attempt resets the uploader so a fresh photo must be chosen.
 2. **Backend Processing (`POST /ocr/verify`)**:
-   - **New Applicant (Success)**: Returns `studentId`, `firstName`, `lastName`, `middleInitial`, `ocrSessionId`, `manualRequired: false`.
-   - **Unfinished Draft (`resumePending: true`)**: If an unfinished draft exists for the scanned Student ID, the backend dispatches a 30-minute secure resume link email (`/apply?resumeToken=...`) and returns `resumePending: true`. The frontend displays an **"Unfinished Draft Found!"** modal with a **"Scan a Different ID"** button.
-   - **Duplicate Application (`alreadySubmitted: true`)**: If an active application for the scanned Student ID already exists, an **Informational Modal** is presented notifying the applicant to check their personal/QCU email for account setup instructions and status updates.
-   - **OCR Attempt 1 or 2 Failed (`attemptsRemaining > 0`)**: Returns error message and keeps user on **Scan Stage** to retake/reupload a clearer photo.
-   - **OCR Attempt 3 Failed (`attemptsRemaining === 0`)**: Returns `ocrSessionId` with **`manualRequired: true`**, advancing user to manual entry.
+   - **New Applicant (Success)**: Returns `studentId`, `firstName`, `lastName`, `middleInitial`, `ocrSessionId`, `manualRequired: false`. Name fields are editable; `studentId` is authoritative from the server.
+   - **Unfinished Draft (`resumePending: true`)**: If an unfinished draft exists for the scanned Student ID, the backend dispatches a 30-minute secure resume link email (`/apply?resumeToken=...`) and returns `resumePending: true`. The frontend displays an **"Unfinished Draft Found!"** modal with a **"Scan a Different ID"** button. No form is shown.
+   - **Duplicate Application (`alreadySubmitted: true`)**: An **Informational Modal** is presented notifying the applicant to check their personal/QCU email for account setup instructions and status updates. No form is shown.
+   - **OCR Attempt 1 or 2 Failed (`attemptsRemaining > 0`, `ocrSessionId: null`)**: **No session is created.** The user stays on the **Scan Stage**; an amber banner shows the sanitized error plus *"You have N attempts left."* and the uploader resets for a retake. The confirm/manual form is not shown.
+   - **OCR Attempt 3 Failed (`attemptsRemaining === 0`)**: Returns an `ocrSessionId` with **`manualRequired: true`**, advancing the user to manual entry with every field (including `studentId`) editable.
+   - **Network / parse failure**: Treated as "no session" — the user stays on the Scan Stage with the error banner.
+
 3. **Cross-Device Draft Rehydration (`?resumeToken=...`)**:
    - When an applicant clicks the resume link in their email (`/apply?resumeToken=<token>`), the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
    - The backend validates the JWT and returns the draft payload (`form`, `currentStep`, `ocrSessionId`).
@@ -92,6 +98,7 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 
 - Applicant verifies extracted Student ID (`YY-NNNN`), Full Name, and Personal Email.
 - If `manualRequired: true`, all fields unlock so the applicant can type their details manually by hand.
+- **Draft Creation (`POST /api/v1/applicants/draft`)**: When the applicant clicks **Continue**, the frontend sends `POST /api/v1/applicants/draft` with `{ lastName, firstName, middleInitial, email, ocrSessionId }` to persist Batch 0 draft data to the database and receive a `draftId`. Any duplicate application errors (`409 Conflict`) are caught and displayed on this step.
 
 ---
 
@@ -100,14 +107,17 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 ### Step 1: Personal & Contact Profile
 - **Personal**: Date of Birth, Place of Birth, Gender
 - **Contact**: Cellphone Number (11 digits), House Address, Facebook Profile Link
+- **Batch 1 Auto-Save**: Clicking **Next Step** calls `PATCH /api/v1/applicants/draft/:draftId/batch-1` to persist personal info in database (`currentStep: 1`).
 
-### Step 2: Academics
+### Step 2: Academics & Document Uploads
 - **Academic & Office**: College, Program *(Filtered dynamically)*, Section, Campus, Preferred Office
 - **Required Documents**: Certificate of Registration (COR) & Curriculum Vitae (CV) file uploaders.
+- **Batch 2 Auto-Save**: Clicking **Next Step** calls `PATCH /api/v1/applicants/draft/:draftId/batch-2` (`FormData`) to save academic info and upload COR & CV files to the server (`currentStep: 2`).
 
-### Step 3: Experience & Showcase
+### Step 3: Experience, Showcase & Final Submission
 - **Background**: Interests/Skills/Hobbies & Past Organizations/Clubs textareas.
 - **Showcase**: Portfolio Website URL, GitHub / Project Links, Previous Works & Achievements.
+- **Batch 3 Final Submit**: Clicking **Submit Application** calls `POST /api/v1/applicants/draft/:draftId/submit` to merge all draft data, create the active `Applicant` record in the database, and issue a setup token email.
 
 ### Submit guard (double-click protection)
 

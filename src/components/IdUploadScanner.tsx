@@ -1,7 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import ReactCrop, { type Crop } from "react-image-crop";
 import "react-image-crop/dist/ReactCrop.css";
-import { Upload, IdCard, ArrowRight, RotateCcw } from "lucide-react";
+import { Upload, IdCard, ArrowRight, RotateCcw, AlertTriangle, Loader2 } from "lucide-react";
 
 export type IdSubmission = {
   source: "camera" | "upload";
@@ -85,9 +85,13 @@ async function getCroppedImg(
 
 export function IdUploadScanner({
   onSubmit,
+  error,
+  busy,
 }: {
   onSubmit: (payload: IdSubmission) => void;
   collectEmail?: boolean;
+  error?: string | null;
+  busy?: boolean;
 }) {
   const fallbackInputRef = useRef<HTMLInputElement>(null);
   
@@ -96,6 +100,18 @@ export function IdUploadScanner({
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
   const [crop, setCrop] = useState<Crop>();
   const [completedCrop, setCompletedCrop] = useState<Crop | null>(null);
+
+  // A failed OCR attempt sends the user back to picking a fresh photo.
+  useEffect(() => {
+    if (error && !busy) {
+      setUploadPreview((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      setUploadFile(null);
+      setStatus("upload");
+    }
+  }, [error, busy]);
 
   const handleUploadFile = (file?: File) => {
     if (!file) return;
@@ -112,6 +128,7 @@ export function IdUploadScanner({
     setUploadPreview(null);
     setStatus("upload");
   };
+
 
   const proceed = async () => {
     if (!uploadPreview || !uploadFile) return;
@@ -146,6 +163,17 @@ export function IdUploadScanner({
         Please upload a clear photo of your QCU ID for verification.
       </p>
 
+      {error && (
+        <div
+          role="alert"
+          className="mt-4 flex items-start gap-2 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 font-body text-sm text-amber-900"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+
       {status === "cropping" && uploadPreview && (
         <div className="mt-5 space-y-4">
           <div className="overflow-hidden rounded-3xl border-2 border-emerald-300 bg-white">
@@ -177,18 +205,30 @@ export function IdUploadScanner({
             <button
               type="button"
               onClick={retake}
-              className="inline-flex items-center gap-2 rounded-full border-2 border-brand-blue-light bg-white px-5 py-2.5 font-heading text-xs font-bold uppercase tracking-[0.15em] text-brand-blue-deep"
+              disabled={busy}
+              className="inline-flex items-center gap-2 rounded-full border-2 border-brand-blue-light bg-white px-5 py-2.5 font-heading text-xs font-bold uppercase tracking-[0.15em] text-brand-blue-deep disabled:cursor-not-allowed disabled:opacity-60"
             >
               <RotateCcw className="size-4" /> Replace
             </button>
             <button
               type="button"
               onClick={() => void proceed()}
-              className="inline-flex items-center gap-2 rounded-full px-7 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+              disabled={busy}
+              aria-busy={busy}
+              className="inline-flex items-center gap-2 rounded-full px-7 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
               style={{ background: "var(--brand-blue-deep)" }}
             >
-              Confirm Crop <ArrowRight className="size-4" />
+              {busy ? (
+                <>
+                  Verifying… <Loader2 className="size-4 animate-spin" />
+                </>
+              ) : (
+                <>
+                  Confirm Crop <ArrowRight className="size-4" />
+                </>
+              )}
             </button>
+
           </div>
         </div>
       )}
