@@ -31,8 +31,31 @@ flowchart TD
     F3 --> G["POST /applicants (Payload Transformations)"]
     G --> H["Stage 3: Account Setup (/apply/account)"]
     
-    H --> I["POST /users/link-applicant"]
-    I --> J["Redirect to Applicant Tracking (/portal/tracking)"]
+    H --> H1["Ensure session (getSession ×3 → fallback signIn.email)"]
+    H1 --> I["POST /api/v1/users/link-applicant (authenticated, credentials: include)"]
+    I --> J["Redirect to Applicant Tracking (/portal/tracking, replace)"]
+```
+
+---
+
+## 🔐 Stage 03: Session Handshake & Account Linking
+
+Account creation is only considered complete when **all** of the following succeed. Any failure surfaces a blocking error on the form — the user is never navigated to a portal route in a half-created state.
+
+1. **`authClient.signUp.email(...)`** — creates the user with the single-use `setupToken`.
+2. **`ensureSession(email, password)`** (`src/routes/apply.account.tsx`) — sign-up does not reliably leave the browser authenticated (`autoSignIn` may be off, and cross-site session cookies are dropped by Safari ITP / Chrome third-party cookie restrictions). This helper polls `authClient.getSession()` up to 3 times with backoff, then falls back to an explicit `authClient.signIn.email(...)`. If no session can be established, the user is told to sign in rather than being bounced silently.
+3. **`POST /api/v1/users/link-applicant`** — authenticated (`credentials: "include"`), body is `{ applicantId }` only. `409 Conflict` (already linked) is treated as success; any other non-2xx is a blocking error. This call also sets `emailVerified` server-side, so it must not fail silently.
+4. **`setPortalUser(...)`** — populated from the **server session**, not local form state.
+
+The stale `qcumsc.applicant` session-storage entry (which carries the single-use setup token) is cleared on success.
+
+### Portal guard behaviour (`src/components/PortalShell.tsx`)
+
+- The shell holds a `sessionState` of `checking | valid | invalid` and **never** redirects to `/portal/login` while `checking`. This removes the race where a freshly created session had not propagated before the first `getSession()`.
+- `getSession()` is retried 3× with backoff; only a definitive failure after all attempts clears the local user and redirects.
+- The backend session is authoritative: the localStorage copy is overwritten whenever it disagrees, so a tampered entry cannot grant access to a portal area.
+- Sign-out calls `authClient.signOut()` before clearing localStorage, so no live session cookie is left behind on a shared device.
+- Guard redirects use `replace: true` so protected routes stay off the back stack.
 ```
 
 ---

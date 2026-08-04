@@ -62,6 +62,10 @@ export function PortalShell({
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [mobileOpen, setMobileOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  // "checking" until the backend session has been resolved at least once.
+  // Never bounce to /portal/login while this is true — that race is what made
+  // fresh sign-ups land back on the login screen.
+  const [sessionState, setSessionState] = useState<"checking" | "valid" | "invalid">("checking");
 
   useEffect(() => {
     setMounted(true);
@@ -69,64 +73,105 @@ export function PortalShell({
 
   useEffect(() => {
     if (!mounted) return;
+    let cancelled = false;
+
+    const bounce = () => {
+      if (cancelled) return;
+      setPortalUser(null);
+      setSessionState("invalid");
+      void navigate({ to: "/portal/login", replace: true });
+    };
 
     const syncSession = async () => {
-      try {
-        const { data, error } = await authClient.getSession();
-        if (error || !data?.user) {
-          setPortalUser(null);
-          void navigate({ to: "/portal/login" });
-          return;
+      // Cold Azure Function starts and slow Set-Cookie propagation can make the
+      // first getSession() miss. Retry a few times before treating the user as
+      // signed out; only a definitive "no user" after all attempts bounces.
+      const MAX_ATTEMPTS = 3;
+      const RETRY_DELAY_MS = 600;
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+        if (cancelled) return;
+        try {
+          const { data, error } = await authClient.getSession();
+
+          if (!error && data?.user) {
+            const backendUser = data.user as any;
+
+            if (backendUser.role === "ADMIN_HR" || backendUser.role === "ADMIN_LOGISTICS") {
+              // Admin accounts are forbidden in the Student Portal.
+              bounce();
+              return;
+            }
+
+            let backendPortalRole: PortalRole = "restricted";
+            if (backendUser.role === "APPLICANT") {
+              backendPortalRole = "applicant";
+            } else if (backendUser.role === "MEMBER") {
+              backendPortalRole = "member";
+            }
+
+            if (cancelled) return;
+
+            // The backend session is the source of truth for identity and role.
+            // Always overwrite the localStorage copy so a tampered/stale entry
+            // can never grant access to a portal area.
+            const cachedUser = getPortalUser();
+            const resolved = {
+              email: backendUser.email,
+              fullName:
+                backendUser.name ||
+                `${backendUser.firstName || ""} ${backendUser.lastName || ""}`.trim() ||
+                "User",
+              studentNumber: backendUser.studentId || "",
+              role: backendPortalRole,
+            };
+            if (
+              !cachedUser ||
+              cachedUser.role !== resolved.role ||
+              cachedUser.email !== resolved.email ||
+              cachedUser.studentNumber !== resolved.studentNumber ||
+              cachedUser.fullName !== resolved.fullName
+            ) {
+              setPortalUser(resolved);
+            }
+
+            setSessionState("valid");
+            return;
+          }
+        } catch (err) {
+          console.error(`Session sync attempt ${attempt} failed:`, err);
         }
 
-        const backendUser = data.user as any;
-        if (backendUser.role === "ADMIN_HR" || backendUser.role === "ADMIN_LOGISTICS") {
-          // Admin accounts are forbidden in the Student Portal.
-          setPortalUser(null);
-          void navigate({ to: "/portal/login" });
-          return;
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
         }
-
-        let backendPortalRole: PortalRole = "restricted";
-        if (backendUser.role === "APPLICANT") {
-          backendPortalRole = "applicant";
-        } else if (backendUser.role === "MEMBER") {
-          backendPortalRole = "member";
-        }
-
-        const cachedUser = getPortalUser();
-        if (!cachedUser || cachedUser.role !== backendPortalRole || cachedUser.email !== backendUser.email) {
-          setPortalUser({
-            email: backendUser.email,
-            fullName: backendUser.name || `${backendUser.firstName || ""} ${backendUser.lastName || ""}`.trim() || "User",
-            studentNumber: backendUser.studentId || "",
-            role: backendPortalRole,
-          });
-        }
-      } catch (err) {
-        console.error("Session sync failed:", err);
       }
+
+      bounce();
     };
 
     void syncSession();
+    return () => {
+      cancelled = true;
+    };
   }, [mounted, navigate]);
 
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || sessionState !== "valid") return;
     if (!user) {
-      void navigate({ to: "/portal/login" });
+      void navigate({ to: "/portal/login", replace: true });
       return;
     }
     if (user.role !== requireRole) {
       void navigate({ to: routeForRole(user.role) });
     }
-  }, [mounted, user, requireRole, navigate]);
+  }, [mounted, sessionState, user, requireRole, navigate]);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  if (!mounted || !user || user.role !== requireRole) {
+  if (!mounted || sessionState !== "valid" || !user || user.role !== requireRole) {
     return <div className="min-h-screen" style={{ background: "var(--gradient-space)" }} />;
   }
 
@@ -143,8 +188,18 @@ export function PortalShell({
     .toUpperCase();
 
   const signOut = () => {
-    setPortalUser(null);
-    void navigate({ to: "/portal/login" });
+    // Kill the backend session first — clearing localStorage alone leaves a
+    // live session cookie that anyone on the device could resume.
+    void (async () => {
+      try {
+        await authClient.signOut();
+      } catch (err) {
+        console.error("Sign out failed:", err);
+      } finally {
+        setPortalUser(null);
+        void navigate({ to: "/portal/login", replace: true });
+      }
+    })();
   };
 
   const firstName = user.fullName.split(" ")[0];
