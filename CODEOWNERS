@@ -9,5 +9,5 @@
 /.github/ @microsoft-student-community-qcu/cloud-team
 
 # 3. Frontend application & Environment Templates
-/src/ @microsoft-student-community-qcu/qa-team @BootlegYouki
-/.env.example @microsoft-student-community-qcu/qa-team @BootlegYouki
+/src/ @microsoft-student-community-qcu/qa-team @boborol @BootlegYouki
+/.env.example @microsoft-student-community-qcu/qa-team @boborol @BootlegYouki
