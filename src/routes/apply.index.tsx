@@ -414,6 +414,9 @@ function ApplyPage() {
   const [provisionalIdFile, setProvisionalIdFile] = useState<File | null>(null);
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
   const [ocrSessionId, setOcrSessionId] = useState<string | null>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [submittingDraft, setSubmittingDraft] = useState(false);
+  const [submittingStep, setSubmittingStep] = useState(false);
   const [manualRequired, setManualRequired] = useState(false);
   const [alreadySubmittedToken, setAlreadySubmittedToken] = useState<string | null>(null);
   const [draftResumePending, setDraftResumePending] = useState(false);
@@ -613,8 +616,7 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-
-  const confirmAndStart = () => {
+  const confirmAndStart = async () => {
     if (!confirmStudentId.trim() || !confirmLastName.trim() || !confirmFirstName.trim()) {
       setOcrError("Please complete your student number, last name, and first name.");
       return;
@@ -637,17 +639,57 @@ function ApplyPage() {
       `${confirmLastName.trim()}, ${confirmFirstName.trim()}${cleanMI ? " " + cleanMI : ""}`
         .trim()
         .replace(/\s+/g, " ");
-    setForm((f) => ({
-      ...f,
-      studentId: confirmStudentId.trim(),
-      fullName: formattedName,
-      email: confirmEmail.trim(),
-    }));
-    setStage("form");
-    setFormStep(1);
-    setStepErrors({});
-    setError(null);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+
+    setSubmittingDraft(true);
+    try {
+      if (ocrSessionId) {
+        const payload: Record<string, any> = {
+          lastName: confirmLastName.trim(),
+          firstName: confirmFirstName.trim(),
+          email: confirmEmail.trim(),
+          ocrSessionId,
+        };
+        if (cleanMI) {
+          payload.middleInitial = cleanMI;
+        }
+
+        const res = await fetch(getApiEndpoint("/api/v1/applicants/draft"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          let errorMsg = json.message || "Failed to create application draft.";
+          if (json.errors) {
+            const detailErrs = Object.values(json.errors).flat().join(" | ");
+            errorMsg = `${errorMsg}: ${detailErrs}`;
+          }
+          throw new Error(errorMsg);
+        }
+
+        if (json.data?.draftId) {
+          setDraftId(json.data.draftId);
+        }
+      }
+
+      setForm((f) => ({
+        ...f,
+        studentId: confirmStudentId.trim(),
+        fullName: formattedName,
+        email: confirmEmail.trim(),
+      }));
+      setStage("form");
+      setFormStep(1);
+      setStepErrors({});
+      setError(null);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (err: any) {
+      setOcrError(err.message || "Failed to save application draft.");
+    } finally {
+      setSubmittingDraft(false);
+    }
   };
 
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
@@ -749,8 +791,8 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const goNextStep = () => {
-    if (submitLockRef.current) return;
+  const goNextStep = async () => {
+    if (submitLockRef.current || submittingStep || isSubmitting) return;
     if (formStep === 1) {
       const errs = validateStep1();
       if (Object.keys(errs).length > 0) {
@@ -761,6 +803,49 @@ function ApplyPage() {
       }
       setStepErrors({});
       setError(null);
+
+      if (draftId) {
+        setSubmittingStep(true);
+        try {
+          let backendGender = "PREFER_NOT_TO_SAY";
+          const g = form.gender.toUpperCase();
+          if (g.includes("MALE") && !g.includes("FEMALE")) backendGender = "MALE";
+          else if (g.includes("FEMALE")) backendGender = "FEMALE";
+          else if (g.includes("LGBTQ")) backendGender = "LGBTQIA";
+
+          const payload = {
+            dateOfBirth: form.dateOfBirth,
+            placeOfBirth: form.placeOfBirth,
+            gender: backendGender,
+            cellphoneNumber: form.cellphone,
+            houseAddress: form.houseAddress,
+            facebookLink: form.facebookLink,
+          };
+
+          const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/batch-1`), {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const json = await res.json();
+
+          if (!res.ok || !json.success) {
+            let errorMsg = json.message || "Failed to save personal information.";
+            if (json.errors) {
+              const detailErrs = Object.values(json.errors).flat().join(" | ");
+              errorMsg = `${errorMsg}: ${detailErrs}`;
+            }
+            throw new Error(errorMsg);
+          }
+        } catch (err: any) {
+          setError(err.message || "Failed to save Step 1 details.");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        } finally {
+          setSubmittingStep(false);
+        }
+      }
+
       setFormStep(2);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else if (formStep === 2) {
@@ -773,6 +858,57 @@ function ApplyPage() {
       }
       setStepErrors({});
       setError(null);
+
+      if (draftId) {
+        setSubmittingStep(true);
+        try {
+          let backendCampus = "SAN_BARTOLOME_MAIN";
+          if (form.campus.toUpperCase().includes("SAN FRANCISCO")) backendCampus = "SAN_FRANCISCO";
+          if (form.campus.toUpperCase().includes("BATASAN")) backendCampus = "BATASAN";
+
+          const targetOffice =
+            OFFICES.find((o) => o.value === form.role || o.label === form.role)?.value ??
+            "SECRETARIAT_OFFICE";
+
+          const fd = new FormData();
+          fd.append("college", form.college);
+          fd.append("program", form.program);
+          fd.append("section", form.section);
+          fd.append("campus", backendCampus);
+          fd.append("office", targetOffice);
+
+          if (!files.certificateOfRegistration) {
+            throw new Error("Please select your Certificate of Registration file.");
+          }
+          if (!files.curriculumVitae) {
+            throw new Error("Please select your Curriculum Vitae file.");
+          }
+          fd.append("certificateOfRegistration", files.certificateOfRegistration);
+          fd.append("curriculumVitae", files.curriculumVitae);
+
+          const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/batch-2`), {
+            method: "PATCH",
+            body: fd,
+          });
+          const json = await res.json();
+
+          if (!res.ok || !json.success) {
+            let errorMsg = json.message || "Failed to save academic details and files.";
+            if (json.errors) {
+              const detailErrs = Object.values(json.errors).flat().join(" | ");
+              errorMsg = `${errorMsg}: ${detailErrs}`;
+            }
+            throw new Error(errorMsg);
+          }
+        } catch (err: any) {
+          setError(err.message || "Failed to save Step 2 details.");
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        } finally {
+          setSubmittingStep(false);
+        }
+      }
+
       setFormStep(3);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } else if (formStep === 3) {
@@ -800,11 +936,67 @@ function ApplyPage() {
   };
 
   const submit = async () => {
-    if (submitLockRef.current) return;
+    if (submitLockRef.current || submittingStep || isSubmitting) return;
     submitLockRef.current = true;
     setIsSubmitting(true);
     setError(null);
+    setSubmittingStep(true);
+
     try {
+      if (draftId) {
+        const payload: Record<string, any> = {
+          interestsSkillsHobbies: form.interests || "N/A",
+          organizationHistory: form.pastOrganizations || "N/A",
+        };
+        if (form.portfolio) payload.portfolio = form.portfolio;
+        if (form.githubOrProjects) payload.githubOrProjectLinks = form.githubOrProjects;
+        if (form.previousWorks) payload.previousWorksAchievements = form.previousWorks;
+
+        const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/submit`), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          let errorMsg = json.message || "Submission failed.";
+          if (json.errors) {
+            const detailErrs = Object.values(json.errors).flat().join(" | ");
+            errorMsg = `${errorMsg}: ${detailErrs}`;
+          }
+          throw new Error(errorMsg);
+        }
+
+        try {
+          let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
+          if (cleanMI) cleanMI = cleanMI + ".";
+          sessionStorage.setItem(
+            "qcumsc.applicant",
+            JSON.stringify({
+              applicantId: json.data?.id,
+              email: form.email,
+              studentId: form.studentId,
+              fullName: form.fullName,
+              firstName: confirmFirstName.trim(),
+              lastName: confirmLastName.trim(),
+              middleInitial: cleanMI,
+              setupToken: json.data?.setupToken,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
+
+        await navigate({
+          to: "/apply/account",
+          search: json.data?.setupToken ? { token: json.data.setupToken } : {},
+          replace: true,
+        });
+        return;
+      }
+
+      // Fallback single endpoint if draftId is not available
       const fd = new FormData();
 
       let cleanMI = confirmMiddleInitial.trim().replace(/\.+$/, "");
@@ -909,9 +1101,11 @@ function ApplyPage() {
       setRedirectingToAccount(false);
       setError(err.message || "An error occurred during submission.");
       setSubmitted(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setSubmittingStep(false);
       submitLockRef.current = false;
       setIsSubmitting(false);
-      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -1063,7 +1257,7 @@ function ApplyPage() {
             <MissionPanel eyebrow="Confirm identity" title={<>Double-check your<br /><span className="text-brand-orange">ID details</span></>} subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email." stats={[{ label: "Step", value: "02" }, { label: "Phase", value: "Verify" }, { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
-                <ConfirmIdStep preview={provisionalIdPreview} loading={ocrLoading} error={ocrError} studentId={confirmStudentId} lastName={confirmLastName} firstName={confirmFirstName} middleInitial={confirmMiddleInitial} digitCorrected={digitCorrectedInName} email={confirmEmail} onStudentId={setConfirmStudentId} onLastName={setConfirmLastName} onFirstName={setConfirmFirstName} onMiddleInitial={setConfirmMiddleInitial} onEmail={setConfirmEmail} isManual={manualRequired} onBack={() => { setOcrError(null); setStage("scan"); }} onContinue={confirmAndStart} />
+                <ConfirmIdStep preview={provisionalIdPreview} loading={ocrLoading || submittingDraft} error={ocrError} studentId={confirmStudentId} lastName={confirmLastName} firstName={confirmFirstName} middleInitial={confirmMiddleInitial} digitCorrected={digitCorrectedInName} email={confirmEmail} onStudentId={setConfirmStudentId} onLastName={setConfirmLastName} onFirstName={setConfirmFirstName} onMiddleInitial={setConfirmMiddleInitial} onEmail={setConfirmEmail} isManual={manualRequired} onBack={() => { setOcrError(null); setStage("scan"); }} onContinue={confirmAndStart} />
               </div>
             </div>
           </div>
@@ -1540,7 +1734,7 @@ function ApplyPage() {
                     <button
                       type="button"
                       onClick={goBackStep}
-                      disabled={isSubmitting}
+                      disabled={submittingStep || isSubmitting}
                       className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                     >
                       <ArrowLeft className="size-4" /> Previous Step
@@ -1552,14 +1746,14 @@ function ApplyPage() {
                   <button
                     type="button"
                     onClick={goNextStep}
-                    disabled={isSubmitting}
-                    aria-busy={isSubmitting}
+                    disabled={submittingStep || isSubmitting}
+                    aria-busy={submittingStep || isSubmitting}
                     className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                     style={{ background: "var(--gradient-cta)" }}
                   >
-                    {isSubmitting ? (
+                    {submittingStep || isSubmitting ? (
                       <>
-                        Submitting… <Loader2 className="size-4 animate-spin" />
+                        {formStep === 3 ? "Submitting…" : "Saving…"} <Loader2 className="size-4 animate-spin" />
                       </>
                     ) : formStep === 3 ? (
                       <>
