@@ -116,7 +116,8 @@ The Step 3 primary action performs a multi-second multipart upload (COR + CV) fo
 - `submit()` in [`src/routes/apply.index.tsx`](../../src/routes/apply.index.tsx) is protected by a `submitLockRef` ref guard — a second invocation in the same tick returns immediately, before any `FormData` is built or any request is sent.
 - An `isSubmitting` state disables both **Submit Application** and **Previous Step**, sets `aria-busy`, and swaps the button label to **"Submitting…"** with a spinning indicator, so the button itself communicates the in-flight state.
 - The lock stays held through a successful `POST /applicants` and the subsequent navigation, so the button never re-arms during the redirect.
-- On failure the lock and `isSubmitting` are released, the error is shown at the top of the form, and the applicant may retry.
+- Before navigating, `submit()` calls `startAccountRedirect()` (see [`src/lib/application-flow.ts`](../../src/lib/application-flow.ts)) and flips local `redirectingToAccount` state. `/apply` then renders the **Account Redirect** screen instead of its default `stage: "consent"` view, so the Data Privacy step can never flash for a frame if the page re-mounts while `/apply/account` loads. The 15s TTL marker is cleared by `/apply/account` on mount, and by `clearAccountRedirect()` if submission fails.
+- On failure the lock and `isSubmitting` are released, the redirect marker is cleared, the error is shown at the top of the form, and the applicant may retry.
 
 
 ---
