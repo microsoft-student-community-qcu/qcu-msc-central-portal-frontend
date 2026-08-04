@@ -11,7 +11,13 @@ export function initSentry(): void {
       environment: import.meta.env.MODE,
       tracesSampleRate: import.meta.env.PROD ? 0.2 : 1.0,
       integrations: [
+        Sentry.browserTracingIntegration(),
         Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+      ],
+      tracePropagationTargets: [
+        "localhost",
+        /^https:\/\/.*\.azurewebsites\.net/,
+        /^https:\/\/.*\.msc-qcu\.tech/,
       ],
       enableLogs: true,
     });
