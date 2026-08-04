@@ -57,6 +57,7 @@ flowchart TD
 
 - Applicant verifies extracted Student ID (`YY-NNNN`), Full Name, and Personal Email.
 - If `manualRequired: true`, all fields unlock so the applicant can type their details manually by hand.
+- **Draft Creation (`POST /api/v1/applicants/draft`)**: When the applicant clicks **Continue**, the frontend sends `POST /api/v1/applicants/draft` with `{ lastName, firstName, middleInitial, email, ocrSessionId }` to persist Batch 0 draft data to the database and receive a `draftId`. Any duplicate application errors (`409 Conflict`) are caught and displayed on this step.
 
 ---
 
@@ -65,14 +66,17 @@ flowchart TD
 ### Step 1: Personal & Contact Profile
 - **Personal**: Date of Birth, Place of Birth, Gender
 - **Contact**: Cellphone Number (11 digits), House Address, Facebook Profile Link
+- **Batch 1 Auto-Save**: Clicking **Next Step** calls `PATCH /api/v1/applicants/draft/:draftId/batch-1` to persist personal info in database (`currentStep: 1`).
 
-### Step 2: Academics
+### Step 2: Academics & Document Uploads
 - **Academic & Office**: College, Program *(Filtered dynamically)*, Section, Campus, Preferred Office
 - **Required Documents**: Certificate of Registration (COR) & Curriculum Vitae (CV) file uploaders.
+- **Batch 2 Auto-Save**: Clicking **Next Step** calls `PATCH /api/v1/applicants/draft/:draftId/batch-2` (`FormData`) to save academic info and upload COR & CV files to the server (`currentStep: 2`).
 
-### Step 3: Experience & Showcase
+### Step 3: Experience, Showcase & Final Submission
 - **Background**: Interests/Skills/Hobbies & Past Organizations/Clubs textareas.
 - **Showcase**: Portfolio Website URL, GitHub / Project Links, Previous Works & Achievements.
+- **Batch 3 Final Submit**: Clicking **Submit Application** calls `POST /api/v1/applicants/draft/:draftId/submit` to merge all draft data, create the active `Applicant` record in the database, and issue a setup token email.
 
 ---
 
