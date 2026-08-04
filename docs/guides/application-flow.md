@@ -17,8 +17,9 @@ flowchart TD
     M -- "Scan a Different ID" --> A
     B -- "Duplicate (alreadySubmitted)" --> K["Informational Modal:<br/>Application Already Submitted"]
     K -- "Scan a Different ID" --> A
-    B -- "Fail (Attempts < 3)" --> A
-    B -- "Fail (Attempt 3)" --> D["Unlock Manual Entry"]
+    B -- "Fail (no ocrSessionId, attempts remain)" --> A
+    B -- "Fail (Attempt 3, ocrSessionId + manualRequired)" --> D["Unlock Manual Entry"]
+
     
     C --> E["Stage 02: Identity Confirmation (ConfirmIdStep)"]
     D --> E
@@ -71,16 +72,20 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 
 ## 🔒 Stage 01: On-Device OCR ID Verification & Draft Resumption
 
+> **Gate rule:** the Stage 02 confirm / manual-entry form is rendered **only** when the backend returned an `ocrSessionId`. A failed attempt with retries remaining creates no session (`ocrSessionId: null`), so the applicant stays on the scan step. Without this gate the applicant could type their details and then be blocked at submit because the payload had no session.
 
 1. **Scanner Component (`IdUploadScanner`)**:
    - Lazy-loaded `tesseract.js` chunk to keep initial bundle size small.
    - Captures photo from camera or user file upload.
+   - Accepts `error` and `busy` props: the error banner renders above the uploader, the confirm button shows **"Verifying…"** while the OCR request is in flight, and a failed attempt resets the uploader so a fresh photo must be chosen.
 2. **Backend Processing (`POST /ocr/verify`)**:
-   - **New Applicant (Success)**: Returns `studentId`, `firstName`, `lastName`, `middleInitial`, `ocrSessionId`, `manualRequired: false`.
-   - **Unfinished Draft (`resumePending: true`)**: If an unfinished draft exists for the scanned Student ID, the backend dispatches a 30-minute secure resume link email (`/apply?resumeToken=...`) and returns `resumePending: true`. The frontend displays an **"Unfinished Draft Found!"** modal with a **"Scan a Different ID"** button.
-   - **Duplicate Application (`alreadySubmitted: true`)**: If an active application for the scanned Student ID already exists, an **Informational Modal** is presented notifying the applicant to check their personal/QCU email for account setup instructions and status updates.
-   - **OCR Attempt 1 or 2 Failed (`attemptsRemaining > 0`)**: Returns error message and keeps user on **Scan Stage** to retake/reupload a clearer photo.
-   - **OCR Attempt 3 Failed (`attemptsRemaining === 0`)**: Returns `ocrSessionId` with **`manualRequired: true`**, advancing user to manual entry.
+   - **New Applicant (Success)**: Returns `studentId`, `firstName`, `lastName`, `middleInitial`, `ocrSessionId`, `manualRequired: false`. Name fields are editable; `studentId` is authoritative from the server.
+   - **Unfinished Draft (`resumePending: true`)**: If an unfinished draft exists for the scanned Student ID, the backend dispatches a 30-minute secure resume link email (`/apply?resumeToken=...`) and returns `resumePending: true`. The frontend displays an **"Unfinished Draft Found!"** modal with a **"Scan a Different ID"** button. No form is shown.
+   - **Duplicate Application (`alreadySubmitted: true`)**: An **Informational Modal** is presented notifying the applicant to check their personal/QCU email for account setup instructions and status updates. No form is shown.
+   - **OCR Attempt 1 or 2 Failed (`attemptsRemaining > 0`, `ocrSessionId: null`)**: **No session is created.** The user stays on the **Scan Stage**; an amber banner shows the sanitized error plus *"You have N attempts left."* and the uploader resets for a retake. The confirm/manual form is not shown.
+   - **OCR Attempt 3 Failed (`attemptsRemaining === 0`)**: Returns an `ocrSessionId` with **`manualRequired: true`**, advancing the user to manual entry with every field (including `studentId`) editable.
+   - **Network / parse failure**: Treated as "no session" — the user stays on the Scan Stage with the error banner.
+
 3. **Cross-Device Draft Rehydration (`?resumeToken=...`)**:
    - When an applicant clicks the resume link in their email (`/apply?resumeToken=<token>`), the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
    - The backend validates the JWT and returns the draft payload (`form`, `currentStep`, `ocrSessionId`).

@@ -419,6 +419,7 @@ function ApplyPage() {
   const [rehydratingDraft, setRehydratingDraft] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const [scanAttemptsRemaining, setScanAttemptsRemaining] = useState<number | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
   const [confirmLastName, setConfirmLastName] = useState("");
   const [confirmFirstName, setConfirmFirstName] = useState("");
@@ -523,6 +524,7 @@ function ApplyPage() {
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(URL.createObjectURL(payload.fullIdImageFile));
     setOcrError(null);
+    setScanAttemptsRemaining(null);
     setOcrLoading(true);
 
     try {
@@ -569,18 +571,36 @@ function ApplyPage() {
           .replace(/\s+/g, " ");
         setForm((f) => ({ ...f, fullName: formattedName }));
       } else {
+        const sessionId: string | null = json.data?.ocrSessionId || null;
+        setOcrError(sanitizeOcrMessage(json.message));
+
+        // No session means the backend created nothing (retries remain).
+        // Never show the confirm/manual form without an ocrSessionId.
+        if (!sessionId) {
+          const remaining = json.data?.attemptsRemaining;
+          setScanAttemptsRemaining(typeof remaining === "number" ? remaining : null);
+          setStage("scan");
+          setOcrSessionId(null);
+          setManualRequired(false);
+          return;
+        }
+
         setStage("confirm");
-        setOcrSessionId(json.data?.ocrSessionId || null);
+        setScanAttemptsRemaining(null);
+        setOcrSessionId(sessionId);
         setManualRequired(!!json.data?.manualRequired);
         setConfirmStudentId(json.data?.studentId || "");
         setConfirmLastName(json.data?.lastName || "");
         setConfirmFirstName(json.data?.firstName || "");
         setConfirmMiddleInitial(json.data?.middleInitial || "");
         setDigitCorrectedInName(false);
-        setOcrError(sanitizeOcrMessage(json.message));
       }
     } catch (err) {
-      setStage("confirm");
+      // Network/parse failure: no session was established, stay on the scan step.
+      setStage("scan");
+      setOcrSessionId(null);
+      setManualRequired(false);
+      setScanAttemptsRemaining(null);
       setOcrError(
         sanitizeOcrMessage(
           err instanceof Error ? err.message : "We couldn't process your ID image. Please re-scan your ID card.",
@@ -591,6 +611,7 @@ function ApplyPage() {
     }
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+
 
   const confirmAndStart = () => {
     if (!confirmStudentId.trim() || !confirmLastName.trim() || !confirmFirstName.trim()) {
@@ -1019,7 +1040,19 @@ function ApplyPage() {
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
                 <Suspense fallback={<div className="grid h-72 place-items-center text-sm text-white/70">Preparing on-device scanner…</div>}>
-                  <IdUploadScanner onSubmit={handleScanComplete} />
+                  <IdUploadScanner
+                    onSubmit={handleScanComplete}
+                    busy={ocrLoading}
+                    error={
+                      ocrError
+                        ? `${ocrError}${
+                            scanAttemptsRemaining !== null
+                              ? ` You have ${scanAttemptsRemaining} attempt${scanAttemptsRemaining === 1 ? "" : "s"} left.`
+                              : ""
+                          }`
+                        : null
+                    }
+                  />
                 </Suspense>
               </div>
             </div>
