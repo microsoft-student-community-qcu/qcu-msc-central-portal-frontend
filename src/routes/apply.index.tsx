@@ -19,7 +19,7 @@ import { CosmicLoader } from "@/components/CosmicLoader";
 import { DataPrivacyConsent } from "@/components/DataPrivacyConsent";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
+import { clearAccountRedirect, hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
 import {
   Select,
   SelectContent,
@@ -871,12 +871,20 @@ function ApplyPage() {
         /* ignore */
       }
 
+      // Mark the hand-off BEFORE navigating. If this page re-mounts while the
+      // account route is loading, its fresh state would otherwise default to
+      // stage "consent" and flash the privacy screen for a frame.
+      startAccountRedirect();
+      setRedirectingToAccount(true);
+
       await navigate({
         to: "/apply/account",
         search: json.data?.setupToken ? { token: json.data.setupToken } : {},
         replace: true,
       });
     } catch (err: any) {
+      clearAccountRedirect();
+      setRedirectingToAccount(false);
       setError(err.message || "An error occurred during submission.");
       setSubmitted(false);
       submitLockRef.current = false;
