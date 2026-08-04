@@ -109,6 +109,16 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 - **Background**: Interests/Skills/Hobbies & Past Organizations/Clubs textareas.
 - **Showcase**: Portfolio Website URL, GitHub / Project Links, Previous Works & Achievements.
 
+### Submit guard (double-click protection)
+
+The Step 3 primary action performs a multi-second multipart upload (COR + CV) followed by a redirect to `/apply/account`. To prevent duplicate applications from impatient repeat clicks:
+
+- `submit()` in [`src/routes/apply.index.tsx`](../../src/routes/apply.index.tsx) is protected by a `submitLockRef` ref guard — a second invocation in the same tick returns immediately, before any `FormData` is built or any request is sent.
+- An `isSubmitting` state disables both **Submit Application** and **Previous Step**, sets `aria-busy`, and swaps the button label to **"Submitting…"** with a spinning indicator, so the button itself communicates the in-flight state.
+- The lock stays held through a successful `POST /applicants` and the subsequent navigation, so the button never re-arms during the redirect.
+- On failure the lock and `isSubmitting` are released, the error is shown at the top of the form, and the applicant may retry.
+
+
 ---
 
 ## 🛠️ Payload Transformations & Backend Mapping
