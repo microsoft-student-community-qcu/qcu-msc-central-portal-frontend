@@ -61,6 +61,52 @@ export const Route = createFileRoute("/apply/account")({
   component: ApplyAccountPage,
 });
 
+type SessionIdentity = {
+  email?: string;
+  fullName?: string;
+  studentNumber?: string;
+};
+
+/**
+ * Confirms an authenticated backend session exists after sign-up.
+ * Retries briefly (cold starts / slow Set-Cookie), then falls back to an
+ * explicit sign-in. Returns the server's view of the user, or null if no
+ * session could be established (e.g. the session cookie was blocked).
+ */
+async function ensureSession(email: string, password: string): Promise<SessionIdentity | null> {
+  const read = async (): Promise<SessionIdentity | null> => {
+    try {
+      const { data, error } = await authClient.getSession();
+      if (error || !data?.user) return null;
+      const u = data.user as any;
+      return {
+        email: u.email,
+        fullName: u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || undefined,
+        studentNumber: u.studentId || undefined,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const found = await read();
+    if (found) return found;
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+  }
+
+  // No session from sign-up — try an explicit sign-in with the credentials the
+  // user just set. Never log or persist the password beyond this call.
+  try {
+    const signIn = await authClient.signIn.email({ email, password });
+    if (signIn.error) return null;
+  } catch {
+    return null;
+  }
+
+  return read();
+}
+
 type Applicant = {
   applicantId?: string;
   studentId: string;
@@ -187,23 +233,42 @@ function ApplyAccountPage() {
         throw new Error(signUpRes.error.message || "Failed to create account.");
       }
 
-      // Now link the applicant record with the newly created user account
-      try {
-        const linkRes = await fetch(getApiEndpoint("/users/link-applicant"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...(applicant.applicantId ? { applicantId: applicant.applicantId } : {}),
-            email: applicant.email,
-            studentId: applicant.studentId,
-          }),
-        });
-        const linkJson = await linkRes.json();
-        if (!linkRes.ok || linkJson.success === false) {
-          console.error("Failed to link applicant to user account:", linkJson?.message);
-        }
-      } catch (linkErr) {
-        console.error("Failed to link applicant to user account:", linkErr);
+      // Sign-up does not reliably leave us authenticated: the backend may have
+      // autoSignIn disabled, and cross-site session cookies get dropped by some
+      // browsers. Confirm we actually have a session, and sign in explicitly if
+      // not, BEFORE navigating — otherwise the portal guard bounces the user
+      // straight back to the login screen.
+      const session = await ensureSession(applicant.email, password);
+      if (!session) {
+        throw new Error(
+          "Your account was created, but we couldn't start a secure session in this browser. Please sign in to continue.",
+        );
+      }
+
+      // Link the applicant record to the new user account. This is an
+      // authenticated call, so the session cookie must be sent. It also sets
+      // emailVerified, so a silent failure here leaves the account half-created.
+      const applicantId = applicant.applicantId;
+      if (!applicantId) {
+        throw new Error(
+          "We couldn't identify your application record. Please open the setup link from your email again.",
+        );
+      }
+
+      const linkRes = await fetch(getApiEndpoint("/api/v1/users/link-applicant"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ applicantId }),
+      });
+      const linkJson = await linkRes.json().catch(() => null);
+
+      // 409 means the applicant is already linked — that is a success for us.
+      if (!linkRes.ok && linkRes.status !== 409) {
+        throw new Error(
+          linkJson?.message ||
+            "Your account was created, but we couldn't link it to your application. Please contact QCU MSC support.",
+        );
       }
 
       try {
@@ -211,18 +276,21 @@ function ApplyAccountPage() {
           "qcumsc.account",
           JSON.stringify({ createdAt: new Date().toISOString() }),
         );
+        // The setup token is single-use now — don't leave it sitting in storage.
+        sessionStorage.removeItem("qcumsc.applicant");
       } catch {
         /* ignore */
       }
-      
+
+      // Trust the server's view of who this account is, not local form state.
       setPortalUser({
-        email: applicant.email,
-        fullName: applicant.fullName,
-        studentNumber: applicant.studentId,
+        email: session.email ?? applicant.email,
+        fullName: session.fullName ?? applicant.fullName,
+        studentNumber: session.studentNumber ?? applicant.studentId,
         role: "applicant",
       });
 
-      void navigate({ to: "/portal/tracking" });
+      void navigate({ to: "/portal/tracking", replace: true });
     } catch (err: any) {
       setError(err.message || "An error occurred during account creation.");
     } finally {

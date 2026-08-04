@@ -96,7 +96,7 @@ export const getApiEndpoint = (path: string): string => {
 | :--- | :--- | :--- | :--- |
 | OCR Verification | `getApiEndpoint("/ocr/verify")` | `POST` | `FormData` (`image`: File) |
 | Applicant Submission | `getApiEndpoint("/applicants")` | `POST` | `FormData` (Text fields + `certificateOfRegistration` + `curriculumVitae`) |
-| Account Linking | `getApiEndpoint("/users/link-applicant")` | `POST` | JSON (`{ applicantId, email, studentId }`) |
+| Account Linking | `getApiEndpoint("/api/v1/users/link-applicant")` | `POST` | JSON (`{ applicantId }`) + `credentials: "include"` — **authenticated**; a session must exist before calling |
 | Fetch Current Applicant | `getApiEndpoint("/api/v1/applicants/me")` | `GET` | Cookie / Credentials (`credentials: "include"`) |
 | Resubmit Application | `getApiEndpoint("/api/v1/applicants/:id/resubmit")` | `POST` | `FormData` |
 

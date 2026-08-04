@@ -51,6 +51,7 @@ Partner logos displayed in `WallOfLogos` on `src/routes/index.tsx` follow these 
 - **Directory**: `src/assets/images/partners/`
 - **Format**: Vector SVG (`.svg`)
 - **Design Rule**: SVGs should contain **only the icon shape/glyph** (no text elements inside the SVG). Text inside SVGs can clash with light/dark theme backgrounds.
+ - **Examples**: `power-bi.svg`, `devcon-manila.svg`
 
 ### 2. Adding a New Partner
 1. Place the clean icon SVG in `src/assets/images/partners/` (e.g. `power-bi.svg`).
@@ -62,6 +63,8 @@ Partner logos displayed in `WallOfLogos` on `src/routes/index.tsx` follow these 
    ```typescript
    const PARTNERS: Partner[] = [
      ...
-     { name: "Power BI Pilipinas", logo: powerBiLogo },
+     { name: "MSC Philippines", logo: mscPhilippinesLogo },
    ];
    ```
+3. Keep the array order intentional: `WallOfLogos` renders partner sets from the `PARTNERS` array in sequence, so moving an entry changes the visual order on the homepage.
+

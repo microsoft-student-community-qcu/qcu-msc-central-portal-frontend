@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useMemo, useState, useEffect, useRef, Suspense } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -10,14 +10,16 @@ import {
   Orbit,
   Sparkles,
   RefreshCw,
+  Loader2,
   Mail,
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { CosmicLoader } from "@/components/CosmicLoader";
+import { DataPrivacyConsent } from "@/components/DataPrivacyConsent";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
+import { clearAccountRedirect, hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
 import {
   Select,
   SelectContent,
@@ -27,16 +29,27 @@ import {
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
 import { getApiEndpoint } from "@/lib/api-config";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { OFFICES } from "@/constants/offices";
 import { toast } from "sonner";
 
 // IdUploadScanner pulls in tesseract.js (~2MB). Lazy-load so the intro
 // stage of /apply stays light; the chunk fetches when the user reaches scan.
-const IdUploadScanner = lazy(() =>
+const IdUploadScanner = lazyWithRetry(() =>
   import("@/components/IdUploadScanner").then((m) => ({
     default: m.IdUploadScanner,
   })),
 );
+
+function sanitizeOcrMessage(message: string | undefined | null): string {
+  if (!message) return "Could not read Student ID. Please re-scan your ID card.";
+  // Backend error text sometimes includes raw HTTP endpoints; strip those for end users.
+  if (/ocr session expired/i.test(message) || /POST\/api\/v1/i.test(message)) {
+    return "Your ID verification session expired. Please re-scan your student ID to verify it again.";
+  }
+  return message;
+}
+
 
 export const Route = createFileRoute("/apply/")({
   validateSearch: (search: Record<string, unknown>): { resumeToken?: string } => ({
@@ -397,7 +410,7 @@ function ApplyPage() {
   const [redirectingToAccount, setRedirectingToAccount] = useState(() =>
     hasActiveAccountRedirect(),
   );
-  const [stage, setStage] = useState<"scan" | "confirm" | "form">("scan");
+  const [stage, setStage] = useState<"consent" | "scan" | "confirm" | "form">("consent");
   const [provisionalIdFile, setProvisionalIdFile] = useState<File | null>(null);
   const [provisionalIdPreview, setProvisionalIdPreview] = useState<string | null>(null);
   const [ocrSessionId, setOcrSessionId] = useState<string | null>(null);
@@ -410,6 +423,7 @@ function ApplyPage() {
   const [rehydratingDraft, setRehydratingDraft] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const [scanAttemptsRemaining, setScanAttemptsRemaining] = useState<number | null>(null);
   const [confirmStudentId, setConfirmStudentId] = useState("");
   const [confirmLastName, setConfirmLastName] = useState("");
   const [confirmFirstName, setConfirmFirstName] = useState("");
@@ -421,6 +435,8 @@ function ApplyPage() {
   const [files, setFiles] = useState<Record<string, File>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   // QUESTIONS minus the fields the OCR confirmation step collects.
@@ -512,6 +528,7 @@ function ApplyPage() {
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(URL.createObjectURL(payload.fullIdImageFile));
     setOcrError(null);
+    setScanAttemptsRemaining(null);
     setOcrLoading(true);
 
     try {
@@ -558,22 +575,40 @@ function ApplyPage() {
           .replace(/\s+/g, " ");
         setForm((f) => ({ ...f, fullName: formattedName }));
       } else {
+        const sessionId: string | null = json.data?.ocrSessionId || null;
+        setOcrError(sanitizeOcrMessage(json.message));
+
+        // No session means the backend created nothing (retries remain).
+        // Never show the confirm/manual form without an ocrSessionId.
+        if (!sessionId) {
+          const remaining = json.data?.attemptsRemaining;
+          setScanAttemptsRemaining(typeof remaining === "number" ? remaining : null);
+          setStage("scan");
+          setOcrSessionId(null);
+          setManualRequired(false);
+          return;
+        }
+
         setStage("confirm");
-        setOcrSessionId(json.data?.ocrSessionId || null);
+        setScanAttemptsRemaining(null);
+        setOcrSessionId(sessionId);
         setManualRequired(!!json.data?.manualRequired);
         setConfirmStudentId(json.data?.studentId || "");
         setConfirmLastName(json.data?.lastName || "");
         setConfirmFirstName(json.data?.firstName || "");
         setConfirmMiddleInitial(json.data?.middleInitial || "");
         setDigitCorrectedInName(false);
-        setOcrError(json.message || "Could not read Student ID. Please re-scan your ID card.");
       }
     } catch (err) {
-      setStage("confirm");
+      // Network/parse failure: no session was established, stay on the scan step.
+      setStage("scan");
+      setOcrSessionId(null);
+      setManualRequired(false);
+      setScanAttemptsRemaining(null);
       setOcrError(
-        err instanceof Error
-          ? err.message
-          : "We couldn't process your ID image. Please re-scan your ID card.",
+        sanitizeOcrMessage(
+          err instanceof Error ? err.message : "We couldn't process your ID image. Please re-scan your ID card.",
+        ),
       );
     } finally {
       setOcrLoading(false);
@@ -757,8 +792,7 @@ function ApplyPage() {
   };
 
   const goNextStep = async () => {
-    if (submittingStep) return;
-
+    if (submitLockRef.current || submittingStep || isSubmitting) return;
     if (formStep === 1) {
       const errs = validateStep1();
       if (Object.keys(errs).length > 0) {
@@ -892,6 +926,7 @@ function ApplyPage() {
   };
 
   const goBackStep = () => {
+    if (submitLockRef.current) return;
     setStepErrors({});
     setError(null);
     if (formStep > 1) {
@@ -901,7 +936,9 @@ function ApplyPage() {
   };
 
   const submit = async () => {
-    if (submittingStep) return;
+    if (submitLockRef.current || submittingStep || isSubmitting) return;
+    submitLockRef.current = true;
+    setIsSubmitting(true);
     setError(null);
     setSubmittingStep(true);
 
@@ -1048,16 +1085,27 @@ function ApplyPage() {
         /* ignore */
       }
 
+      // Mark the hand-off BEFORE navigating. If this page re-mounts while the
+      // account route is loading, its fresh state would otherwise default to
+      // stage "consent" and flash the privacy screen for a frame.
+      startAccountRedirect();
+      setRedirectingToAccount(true);
+
       await navigate({
         to: "/apply/account",
         search: json.data?.setupToken ? { token: json.data.setupToken } : {},
         replace: true,
       });
     } catch (err: any) {
+      clearAccountRedirect();
+      setRedirectingToAccount(false);
       setError(err.message || "An error occurred during submission.");
       setSubmitted(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } finally {
       setSubmittingStep(false);
+      submitLockRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -1067,6 +1115,8 @@ function ApplyPage() {
     setStepErrors({});
     setFormStep(1);
     setSubmitted(false);
+    submitLockRef.current = false;
+    setIsSubmitting(false);
     setProvisionalIdFile(null);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(null);
@@ -1170,20 +1220,41 @@ function ApplyPage() {
           </div>
         )}
 
-        {stage === "scan" ? (
+        {stage === "consent" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-            <MissionPanel eyebrow="Pre-flight check" title={<>Verify your<br /><span className="text-brand-orange">student orbit</span></>} subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet." stats={[{ label: "Step", value: "00" }, { label: "Phase", value: "ID Scan" }, { label: "Range", value: "On-device" }]} />
+            <MissionPanel eyebrow="Privacy clearance" title={<>Consent to<br /><span className="text-brand-orange">data processing</span></>} subtitle="Before we scan your ID, review how QCU MSC collects and protects your personal information under RA 10173, the Data Privacy Act of 2012." stats={[{ label: "Step", value: "00" }, { label: "Phase", value: "Consent" }, { label: "Law", value: "RA 10173" }]} />
+            <div className="lg:pt-6">
+              <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
+                <DataPrivacyConsent onAccept={() => setStage("scan")} />
+              </div>
+            </div>
+          </div>
+        ) : stage === "scan" ? (
+          <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
+            <MissionPanel eyebrow="Pre-flight check" title={<>Verify your<br /><span className="text-brand-orange">student orbit</span></>} subtitle="Scan your QCU Student ID using the guided frame. Everything stays on your device — we just need to confirm you're a real cadet." stats={[{ label: "Step", value: "01" }, { label: "Phase", value: "ID Scan" }, { label: "Range", value: "On-device" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
                 <Suspense fallback={<div className="grid h-72 place-items-center text-sm text-white/70">Preparing on-device scanner…</div>}>
-                  <IdUploadScanner onSubmit={handleScanComplete} />
+                  <IdUploadScanner
+                    onSubmit={handleScanComplete}
+                    busy={ocrLoading}
+                    error={
+                      ocrError
+                        ? `${ocrError}${
+                            scanAttemptsRemaining !== null
+                              ? ` You have ${scanAttemptsRemaining} attempt${scanAttemptsRemaining === 1 ? "" : "s"} left.`
+                              : ""
+                          }`
+                        : null
+                    }
+                  />
                 </Suspense>
               </div>
             </div>
           </div>
         ) : stage === "confirm" ? (
           <div className="grid gap-10 lg:grid-cols-[0.9fr_1.1fr] lg:gap-14">
-            <MissionPanel eyebrow="Confirm identity" title={<>Double-check your<br /><span className="text-brand-orange">ID details</span></>} subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email." stats={[{ label: "Step", value: "01" }, { label: "Phase", value: "Verify" }, { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" }]} />
+            <MissionPanel eyebrow="Confirm identity" title={<>Double-check your<br /><span className="text-brand-orange">ID details</span></>} subtitle="Our OCR engine reads your captured ID and pre-fills these fields. Adjust anything that looks off, then add your QCU email." stats={[{ label: "Step", value: "02" }, { label: "Phase", value: "Verify" }, { label: "OCR", value: ocrLoading ? "Reading…" : "Ready" }]} />
             <div className="lg:pt-6">
               <div className="rounded-[2rem] glass-strong p-6 shadow-[0_30px_80px_-30px_rgba(0,0,0,0.6)] sm:p-8">
                 <ConfirmIdStep preview={provisionalIdPreview} loading={ocrLoading || submittingDraft} error={ocrError} studentId={confirmStudentId} lastName={confirmLastName} firstName={confirmFirstName} middleInitial={confirmMiddleInitial} digitCorrected={digitCorrectedInName} email={confirmEmail} onStudentId={setConfirmStudentId} onLastName={setConfirmLastName} onFirstName={setConfirmFirstName} onMiddleInitial={setConfirmMiddleInitial} onEmail={setConfirmEmail} isManual={manualRequired} onBack={() => { setOcrError(null); setStage("scan"); }} onContinue={confirmAndStart} />
@@ -1663,8 +1734,8 @@ function ApplyPage() {
                     <button
                       type="button"
                       onClick={goBackStep}
-                      disabled={submittingStep}
-                      className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={submittingStep || isSubmitting}
+                      className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                     >
                       <ArrowLeft className="size-4" /> Previous Step
                     </button>
@@ -1675,12 +1746,15 @@ function ApplyPage() {
                   <button
                     type="button"
                     onClick={goNextStep}
-                    disabled={submittingStep}
-                    className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    disabled={submittingStep || isSubmitting}
+                    aria-busy={submittingStep || isSubmitting}
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                     style={{ background: "var(--gradient-cta)" }}
                   >
-                    {submittingStep ? (
-                      <span className="animate-pulse">Saving…</span>
+                    {submittingStep || isSubmitting ? (
+                      <>
+                        {formStep === 3 ? "Submitting…" : "Saving…"} <Loader2 className="size-4 animate-spin" />
+                      </>
                     ) : formStep === 3 ? (
                       <>
                         Submit Application <Rocket className="size-4" />
