@@ -10,6 +10,7 @@ import {
   Orbit,
   Sparkles,
   RefreshCw,
+  Loader2,
   Mail,
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
@@ -429,6 +430,8 @@ function ApplyPage() {
   const [files, setFiles] = useState<Record<string, File>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   // QUESTIONS minus the fields the OCR confirmation step collects.
@@ -725,6 +728,7 @@ function ApplyPage() {
   };
 
   const goNextStep = () => {
+    if (submitLockRef.current) return;
     if (formStep === 1) {
       const errs = validateStep1();
       if (Object.keys(errs).length > 0) {
@@ -759,11 +763,12 @@ function ApplyPage() {
       }
       setStepErrors({});
       setError(null);
-      submit();
+      void submit();
     }
   };
 
   const goBackStep = () => {
+    if (submitLockRef.current) return;
     setStepErrors({});
     setError(null);
     if (formStep > 1) {
@@ -773,6 +778,9 @@ function ApplyPage() {
   };
 
   const submit = async () => {
+    if (submitLockRef.current) return;
+    submitLockRef.current = true;
+    setIsSubmitting(true);
     setError(null);
     try {
       const fd = new FormData();
@@ -871,6 +879,9 @@ function ApplyPage() {
     } catch (err: any) {
       setError(err.message || "An error occurred during submission.");
       setSubmitted(false);
+      submitLockRef.current = false;
+      setIsSubmitting(false);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   };
 
@@ -880,6 +891,8 @@ function ApplyPage() {
     setStepErrors({});
     setFormStep(1);
     setSubmitted(false);
+    submitLockRef.current = false;
+    setIsSubmitting(false);
     setProvisionalIdFile(null);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
     setProvisionalIdPreview(null);
@@ -1485,7 +1498,8 @@ function ApplyPage() {
                     <button
                       type="button"
                       onClick={goBackStep}
-                      className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white"
+                      disabled={isSubmitting}
+                      className="inline-flex items-center gap-2 rounded-full glass-strong px-5 py-2.5 font-heading text-sm font-semibold text-brand-blue-deep transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                     >
                       <ArrowLeft className="size-4" /> Previous Step
                     </button>
@@ -1496,10 +1510,16 @@ function ApplyPage() {
                   <button
                     type="button"
                     onClick={goNextStep}
-                    className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5"
+                    disabled={isSubmitting}
+                    aria-busy={isSubmitting}
+                    className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
                     style={{ background: "var(--gradient-cta)" }}
                   >
-                    {formStep === 3 ? (
+                    {isSubmitting ? (
+                      <>
+                        Submitting… <Loader2 className="size-4 animate-spin" />
+                      </>
+                    ) : formStep === 3 ? (
                       <>
                         Submit Application <Rocket className="size-4" />
                       </>
