@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useMemo, useState, useEffect, useRef, Suspense } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -29,12 +29,13 @@ import {
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
 import { getApiEndpoint } from "@/lib/api-config";
+import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { OFFICES } from "@/constants/offices";
 import { toast } from "sonner";
 
 // IdUploadScanner pulls in tesseract.js (~2MB). Lazy-load so the intro
 // stage of /apply stays light; the chunk fetches when the user reaches scan.
-const IdUploadScanner = lazy(() =>
+const IdUploadScanner = lazyWithRetry(() =>
   import("@/components/IdUploadScanner").then((m) => ({
     default: m.IdUploadScanner,
   })),

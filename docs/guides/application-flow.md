@@ -67,6 +67,7 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 - Presents a full privacy notice under **Republic Act No. 10173 (Data Privacy Act of 2012)** covering: information collected (ID image, student number, contact details, academic records, COR/CV, application content), purposes of processing (enrollment verification, screening, status transmissions, portal account & membership management, anonymized reporting), disclosure limits, retention, and the data subject's rights.
 - **Validation is frontend-only**: the "I Agree — Continue to ID Verification" button stays disabled until the checkbox is ticked; an inline error appears if the user attempts to proceed unchecked. No consent request is sent to the backend.
 - On accept, the page transitions to `stage: "scan"` and only then is the OCR scanner (and its lazy `tesseract.js` chunk) reachable.
+- **Chunk-load resilience:** the scanner is loaded via `lazyWithRetry()` ([`src/lib/lazy-with-retry.ts`](../../src/lib/lazy-with-retry.ts)) instead of bare `React.lazy`. A dynamic import that fails (`TypeError: Importing a module script failed.`, typically a stale chunk after a redeploy or a flaky network) is retried twice with backoff; if it still fails, the page reloads once (rate-limited to one reload per 30s via `sessionStorage`) so the client picks up the current build. Only after that does the error surface to the error boundary.
 
 ---
 
