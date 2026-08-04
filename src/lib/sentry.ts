@@ -10,8 +10,11 @@ export function initSentry(): void {
       dsn,
       environment: import.meta.env.MODE,
       tracesSampleRate: import.meta.env.PROD ? 0.2 : 1.0,
+      replaysSessionSampleRate: import.meta.env.PROD ? 0.1 : 0,
+      replaysOnErrorSampleRate: 1.0,
       integrations: [
         Sentry.browserTracingIntegration(),
+        Sentry.replayIntegration(),
         Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
       ],
       tracePropagationTargets: [
