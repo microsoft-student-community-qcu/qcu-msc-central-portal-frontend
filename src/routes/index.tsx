@@ -21,7 +21,6 @@ import { FaTiktok } from "react-icons/fa";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import azureCommunityLogo from "../assets/images/partners/microsoft-azure-community-philippines.svg";
-import { SentryFeedbackButton } from "@/components/SentryFeedbackButton";
 import bitsLogo from "../assets/images/partners/bits.svg";
 import mscPupLogo from "../assets/images/partners/msc-pup.svg";
 import dataEngineeringPilipinasLogo from "../assets/images/partners/data-engineering-pilipinas.svg";
@@ -233,7 +232,6 @@ function SiteHeader() {
         </a>
       </nav>
       <div className="hidden items-center gap-2 md:flex">
-        <SentryFeedbackButton variant="desktop" />
         <AuthHeaderAction variant="desktop" />
         <LoggedInApplyReplacement />
       </div>
@@ -273,7 +271,6 @@ function SiteHeader() {
             Collaborate
           </a>
           <div className="mt-1 flex flex-col items-stretch gap-2 border-t border-white/40 pt-3 [&>*]:w-full [&_a]:justify-center [&_button]:justify-center">
-            <SentryFeedbackButton variant="mobile" />
             <AuthHeaderAction variant="mobile" />
             <div onClick={() => setMenuOpen(false)} className="w-full [&>a]:w-full">
               <LoggedInApplyReplacement />
