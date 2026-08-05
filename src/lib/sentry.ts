@@ -25,6 +25,5 @@ export function initSentry(): void {
       ],
       enableLogs: true,
     });
-    console.log("[Sentry] Main frontend monitoring initialized.");
   }
 }
