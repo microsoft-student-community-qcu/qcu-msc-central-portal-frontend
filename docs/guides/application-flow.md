@@ -88,9 +88,19 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
    - **Network / parse failure**: Treated as "no session" — the user stays on the Scan Stage with the error banner.
 
 3. **Cross-Device Draft Rehydration (`?resumeToken=...`)**:
-   - When an applicant clicks the resume link in their email (`/apply?resumeToken=<token>`), the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
-   - The backend validates the JWT and returns the draft payload (`form`, `currentStep`, `ocrSessionId`).
+   - **Accepted link shapes:** the canonical link is `/apply?resumeToken=<jwt>`. Because the backend email previously pointed at a path the app had no route for (producing a hard 404), the frontend now also accepts `/apply?token=<jwt>` and `/apply/resume?token=<jwt>` / `/apply/resume?resumeToken=<jwt>`. [`src/routes/apply.resume.tsx`](../../src/routes/apply.resume.tsx) is a redirect-only alias route (`beforeLoad` throws `redirect({ to: "/apply", search: { resumeToken }, replace: true })`), and `/apply`'s `validateSearch` treats `token` as an alias for `resumeToken`.
+   - When an applicant clicks the resume link in their email, the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
+   - **Response shape:** the backend wraps the record as `{ success, data: { draft: { … } } }` — a flat draft row (`id`, `currentStep`, `ocrSessionId`, plus every saved field), *not* `{ form, currentStep }`. The frontend reads `json.data.draft` (falling back to `json.data`); reading `json.data` alone left every field empty.
+   - **Rehydration mapping:** `draft.id` → `draftId` (so subsequent batch PATCHes target the same draft), backend enums are mapped back to UI labels (`FEMALE` → "Female", `SAN_BARTOLOME_MAIN` → "San Bartolome (Main)", `SECRETARIAT_OFFICE` → "Secretariat Office"), `dateOfBirth` is truncated from ISO datetime to `YYYY-MM-DD` for the date input, and `lastName/firstName/middleInitial` are recombined into the `"Last, First M."` display name.
+   - **Step mapping:** `currentStep` counts *saved* batches (`0` = only Batch 0 done), so the form opens at `currentStep + 1` (clamped to 1–3). Opening on the already-saved step made the next batch PATCH fail with "draft is at wrong step".
    - The frontend rehydrates the state, transitions directly to the saved step in `stage: "form"`, displays a welcome toast, and clears `resumeToken` from the URL.
+
+   - **Single-use guarantee:** the token is consumed exactly once. `consumedResumeTokenRef` records the token before the request is issued, so a remount, HMR reload, or effect re-run never re-POSTs the same token (the backend rejects a replayed token, which would surface as a false "Invalid or expired draft resume link." error).
+   - **Timeout guard:** the resume POST is aborted after 25s (`AbortController`), showing "Resuming your draft timed out. Please try the link again." and returning to `/apply` — an unreachable API can no longer leave the applicant on an endless loader.
+   - **Visible state:** while the draft is being fetched, `/apply` renders `<CosmicLoader label="Resuming your application draft" />` (previously `rehydratingDraft` was tracked but never rendered).
+   - Verified end-to-end against a stubbed `/api/v1/applicants/draft/resume`: `/apply?token=<jwt>` issues one POST, lands on `/apply` with the query string cleared, and renders the saved step with the draft's fields pre-filled.
+   - **Console `404` on the emailed link is a hosting artifact, not a routing bug.** `dev.msc-qcu.tech` is served from an Azure Storage static website (`x-ms-error-code: WebContentNotFound`), which ignores `staticwebapp.config.json`; every deep link (`/apply`, `/portal/login`, `/apply/resume?...`) is served through the error document, so the SPA shell renders correctly but the document response carries HTTP 404. Live re-test of the emailed link redirects to `/apply` and rehydrates the draft successfully. To make hosting return the shell for deep links, `bun run build:swa` now also emits `dist/client/index.html` and `dist/client/404.html` (copies of `_shell.html`) via [`scripts/emit-spa-fallback.mjs`](../../scripts/emit-spa-fallback.mjs); the storage account's index/error document settings must point at those files.
+
 
 ---
 

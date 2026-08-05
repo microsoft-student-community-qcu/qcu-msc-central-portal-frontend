@@ -1041,11 +1041,12 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
 
   return (
     <div className="mt-10">
-      <div className="relative min-h-[22rem] overflow-hidden sm:h-44 sm:min-h-0">
+      <div className="relative grid items-start">
         {slides.map((group, sIdx) => (
           <div
             key={sIdx}
-            className="absolute inset-0 grid grid-cols-2 place-items-start justify-items-center gap-x-4 gap-y-6 transition-opacity duration-700 ease-out sm:flex sm:flex-wrap sm:items-start sm:justify-center sm:gap-10"
+            className="col-start-1 row-start-1 grid grid-cols-2 place-items-start justify-items-center gap-x-4 gap-y-8 transition-opacity duration-700 ease-out sm:flex sm:flex-wrap sm:items-start sm:justify-center sm:gap-10"
+
             style={{
               opacity: sIdx === index ? 1 : 0,
               pointerEvents: sIdx === index ? "auto" : "none",
@@ -1057,10 +1058,11 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
               return (
                 <div
                   key={p.name}
-                  className="group flex w-full max-w-[8rem] flex-col items-center gap-2 sm:w-28"
+                  className="group flex w-full min-w-0 max-w-[9rem] flex-col items-center gap-2 sm:w-28 sm:max-w-none"
                 >
                   <div
-                    className="relative grid aspect-square w-20 place-items-center overflow-hidden rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
+                    className="relative grid aspect-square w-20 shrink-0 place-items-center overflow-hidden rounded-full p-3 transition duration-300 group-hover:-translate-y-0.5 sm:w-24"
+
                     style={{
                       background:
                         "radial-gradient(circle at 30% 25%, color-mix(in oklab, white 95%, transparent), color-mix(in oklab, white 60%, transparent))",
@@ -1085,9 +1087,10 @@ function LogoSlideshow({ partners, accents }: { partners: Partner[]; accents: st
                       className="relative h-full w-full object-cover"
                     />
                   </div>
-                  <span className="text-center font-heading text-xs font-semibold tracking-tight text-brand-blue-deep/80 sm:text-sm">
+                  <span className="w-full text-balance break-words text-center font-heading text-xs font-semibold leading-snug tracking-tight text-brand-blue-deep/80 sm:text-sm">
                     {p.name}
                   </span>
+
                 </div>
               );
             })}

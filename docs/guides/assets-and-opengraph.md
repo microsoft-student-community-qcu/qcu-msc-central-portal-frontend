@@ -68,3 +68,15 @@ Partner logos displayed in `WallOfLogos` on `src/routes/index.tsx` follow these 
    ```
 3. Keep the array order intentional: `WallOfLogos` renders partner sets from the `PARTNERS` array in sequence, so moving an entry changes the visual order on the homepage.
 
+### 3. Responsive Layout Rules (mobile)
+
+The slideshow stacks every slide into a single CSS grid cell (`col-start-1 row-start-1`) and cross-fades with opacity, instead of absolutely positioning slides inside a fixed-height box. This matters:
+
+- **No fixed height / no `overflow-hidden`**: the container auto-sizes to the tallest slide, so the 2-column mobile grid (3 rows for 5 partners) is never clipped.
+- **Logo bubble** uses `shrink-0` so the circular badge keeps its aspect ratio at narrow widths.
+- **Partner name** uses `w-full break-words leading-snug text-balance`, allowing two-line names ("Microsoft Azure Community Philippines") to wrap instead of being cut off.
+- Tiles are `w-full min-w-0 max-w-[9rem]` on mobile and revert to the fixed `sm:w-28` flex row from `sm:` up.
+
+When adding a partner with a long name, verify the section at a 390 px viewport before shipping.
+
+
