@@ -490,7 +490,33 @@ function ApplyPage() {
           throw new Error(json.message || "Invalid or expired draft resume link.");
         }
 
-        const draftData = json.data;
+        // The API wraps the record: { success, data: { draft: {...} } }.
+        // Older/alternate shapes returned the draft directly under data.
+        const draftData = json.data.draft ?? json.data;
+
+        const GENDER_LABELS: Record<string, string> = {
+          MALE: "Male",
+          FEMALE: "Female",
+          LGBTQIA: "LGBTQIA+",
+          PREFER_NOT_TO_SAY: "Prefer not to say",
+        };
+        const CAMPUS_LABELS: Record<string, string> = {
+          SAN_BARTOLOME_MAIN: "San Bartolome (Main)",
+          SAN_FRANCISCO: "San Francisco",
+          BATASAN: "Batasan",
+        };
+        const officeLabel = OFFICES.find((o) => o.value === draftData.office)?.label;
+        const dob =
+          typeof draftData.dateOfBirth === "string" ? draftData.dateOfBirth.slice(0, 10) : "";
+
+        const cleanMI = (draftData.middleInitial || "").trim().replace(/\.+$/, "");
+        const rehydratedName = `${draftData.lastName || ""}, ${draftData.firstName || ""}${
+          cleanMI ? " " + cleanMI + "." : ""
+        }`
+          .trim()
+          .replace(/\s+/g, " ");
+
+        if (draftData.id) setDraftId(draftData.id);
         if (draftData.studentId) setConfirmStudentId(draftData.studentId);
         if (draftData.lastName) setConfirmLastName(draftData.lastName);
         if (draftData.firstName) setConfirmFirstName(draftData.firstName);
@@ -500,16 +526,16 @@ function ApplyPage() {
         setForm((f) => ({
           ...f,
           studentId: draftData.studentId || f.studentId,
-          fullName: `${draftData.lastName || ""}, ${draftData.firstName || ""}`.trim(),
+          fullName: rehydratedName || f.fullName,
           email: draftData.email || f.email,
           college: draftData.college || f.college,
           program: draftData.program || f.program,
           section: draftData.section || f.section,
-          campus: draftData.campus || f.campus,
-          role: draftData.office || f.role,
-          dateOfBirth: draftData.dateOfBirth || f.dateOfBirth,
+          campus: CAMPUS_LABELS[draftData.campus] || draftData.campus || f.campus,
+          role: officeLabel || draftData.office || f.role,
+          dateOfBirth: dob || f.dateOfBirth,
           placeOfBirth: draftData.placeOfBirth || f.placeOfBirth,
-          gender: draftData.gender || f.gender,
+          gender: GENDER_LABELS[draftData.gender] || draftData.gender || f.gender,
           houseAddress: draftData.houseAddress || f.houseAddress,
           cellphone: draftData.cellphoneNumber || f.cellphone,
           facebookLink: draftData.facebookLink || f.facebookLink,
@@ -523,9 +549,14 @@ function ApplyPage() {
         if (draftData.ocrSessionId) setOcrSessionId(draftData.ocrSessionId);
 
         setStage("form");
-        const currentStep = draftData.currentStep || 1;
-        setFormStep(currentStep > 3 ? 3 : (currentStep as 1 | 2 | 3));
+        // Backend currentStep counts *saved* batches (0 = only Batch 0 done), so the
+        // next form step is currentStep + 1. Landing on the already-saved step would
+        // make the batch PATCH fail with "draft is at wrong step".
+        const savedStep = Number(draftData.currentStep) || 0;
+        const nextStep = Math.min(Math.max(savedStep + 1, 1), 3) as 1 | 2 | 3;
+        setFormStep(nextStep);
         toast.success("Welcome back! Your application draft has been resumed.");
+
 
         void navigate({ to: "/apply", replace: true });
       } catch (err: any) {
