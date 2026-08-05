@@ -8,7 +8,8 @@ export function initSentry(): void {
   if (dsn) {
     Sentry.init({
       dsn,
-      environment: import.meta.env.MODE,
+      environment: import.meta.env.VITE_SENTRY_ENV || import.meta.env.MODE,
+      release: import.meta.env.VITE_APP_VERSION || "unknown",
       tracesSampleRate: import.meta.env.PROD ? 0.2 : 1.0,
       replaysSessionSampleRate: import.meta.env.PROD ? 0.1 : 0,
       replaysOnErrorSampleRate: 1.0,
@@ -16,6 +17,11 @@ export function initSentry(): void {
         Sentry.browserTracingIntegration(),
         Sentry.replayIntegration(),
         Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+        Sentry.feedbackIntegration({
+          colorScheme: "system",
+          isNameRequired: true,
+          isEmailRequired: true,
+        }),
       ],
       tracePropagationTargets: [
         "localhost",
