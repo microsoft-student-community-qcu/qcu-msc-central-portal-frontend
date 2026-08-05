@@ -473,11 +473,16 @@ function ApplyPage() {
     const resumeDraft = async () => {
       setRehydratingDraft(true);
 
+      // Never let a hanging network call leave the applicant on an endless loader.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 25_000);
+
       try {
         const res = await fetch(getApiEndpoint("/api/v1/applicants/draft/resume"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token }),
+          signal: controller.signal,
         });
         const json = await res.json();
 
@@ -524,9 +529,14 @@ function ApplyPage() {
 
         void navigate({ to: "/apply", replace: true });
       } catch (err: any) {
-        toast.error(err.message || "Failed to resume draft.");
+        toast.error(
+          err?.name === "AbortError"
+            ? "Resuming your draft timed out. Please try the link again."
+            : err.message || "Failed to resume draft.",
+        );
         void navigate({ to: "/apply", replace: true });
       } finally {
+        clearTimeout(timeoutId);
         setRehydratingDraft(false);
       }
     };
@@ -1142,6 +1152,7 @@ function ApplyPage() {
 
   if (!clientReady) return <ApplyBootScreen />;
   if (redirectingToAccount) return <AccountRedirectScreen />;
+  if (rehydratingDraft) return <CosmicLoader label="Resuming your application draft" />;
   if (ocrLoading) return <CosmicLoader label="Reading your ID" />;
 
   return (
