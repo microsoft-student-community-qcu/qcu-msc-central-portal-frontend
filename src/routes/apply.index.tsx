@@ -52,8 +52,10 @@ function sanitizeOcrMessage(message: string | undefined | null): string {
 
 
 export const Route = createFileRoute("/apply/")({
+  // The resume email may arrive as ?resumeToken=... or ?token=...; accept both.
   validateSearch: (search: Record<string, unknown>): { resumeToken?: string } => ({
-    resumeToken: search.resumeToken as string | undefined,
+    resumeToken:
+      (search.resumeToken as string | undefined) ?? (search.token as string | undefined),
   }),
   head: () => ({
     meta: [
@@ -437,6 +439,8 @@ function ApplyPage() {
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
+  const consumedResumeTokenRef = useRef<string | null>(null);
+
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
   // QUESTIONS minus the fields the OCR confirmation step collects.
@@ -458,15 +462,22 @@ function ApplyPage() {
   const search = Route.useSearch();
 
   useEffect(() => {
-    if (!search.resumeToken) return;
+    const token = search.resumeToken;
+    if (!token) return;
+    // The resume token is single-use on the backend: a second POST with the same
+    // token fails. Guard against re-entry (remount/HMR/effect re-run) so we only
+    // ever consume a given token once per session.
+    if (consumedResumeTokenRef.current === token) return;
+    consumedResumeTokenRef.current = token;
 
     const resumeDraft = async () => {
       setRehydratingDraft(true);
+
       try {
         const res = await fetch(getApiEndpoint("/api/v1/applicants/draft/resume"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: search.resumeToken }),
+          body: JSON.stringify({ token }),
         });
         const json = await res.json();
 

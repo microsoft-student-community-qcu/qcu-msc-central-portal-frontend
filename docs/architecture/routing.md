@@ -9,7 +9,8 @@ The application uses `@tanstack/react-router` with file-based routing. All route
 | Route Path | File Location | Purpose & Description | Access Level |
 | :--- | :--- | :--- | :--- |
 | `/` | `src/routes/index.tsx` | Landing page, community overview, mission vision, and apply CTA. | Public |
-| `/apply` | `src/routes/apply.index.tsx` | Onboarding flow: OCR Student ID verification + 3-Step Batch Application Form. | Public |
+| `/apply` | `src/routes/apply.index.tsx` | Onboarding flow: OCR Student ID verification + 3-Step Batch Application Form. Accepts `?resumeToken=` (or `?token=`) from the resume email. | Public |
+| `/apply/resume` | `src/routes/apply.resume.tsx` | Alias for the emailed resume link; redirects `?token=` / `?resumeToken=` to `/apply?resumeToken=…`. | Public / Redirect |
 | `/apply/account` | `src/routes/apply.account.tsx` | Post-submission Cockpit Account creation for applicants. | Public / Redirect |
 | `/portal/login` | `src/routes/portal.login.tsx` | Portal authentication page for registered applicants and admins. | Public |
 | `/portal/tracking` | `src/routes/portal.tracking.tsx` | Real-time application status tracking, decision display, and resubmission form. | Authenticated (Applicant) |

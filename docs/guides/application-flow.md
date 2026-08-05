@@ -88,9 +88,13 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
    - **Network / parse failure**: Treated as "no session" — the user stays on the Scan Stage with the error banner.
 
 3. **Cross-Device Draft Rehydration (`?resumeToken=...`)**:
-   - When an applicant clicks the resume link in their email (`/apply?resumeToken=<token>`), the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
+   - **Accepted link shapes:** the canonical link is `/apply?resumeToken=<jwt>`. Because the backend email previously pointed at a path the app had no route for (producing a hard 404), the frontend now also accepts `/apply?token=<jwt>` and `/apply/resume?token=<jwt>` / `/apply/resume?resumeToken=<jwt>`. [`src/routes/apply.resume.tsx`](../../src/routes/apply.resume.tsx) is a redirect-only alias route (`beforeLoad` throws `redirect({ to: "/apply", search: { resumeToken }, replace: true })`), and `/apply`'s `validateSearch` treats `token` as an alias for `resumeToken`.
+   - When an applicant clicks the resume link in their email, the frontend sends `POST /api/v1/applicants/draft/resume` with `{ token }`.
    - The backend validates the JWT and returns the draft payload (`form`, `currentStep`, `ocrSessionId`).
    - The frontend rehydrates the state, transitions directly to the saved step in `stage: "form"`, displays a welcome toast, and clears `resumeToken` from the URL.
+   - **Single-use guarantee:** the token is consumed exactly once. `consumedResumeTokenRef` records the token before the request is issued, so a remount, HMR reload, or effect re-run never re-POSTs the same token (the backend rejects a replayed token, which would surface as a false "Invalid or expired draft resume link." error).
+   - Verified end-to-end against a stubbed `/api/v1/applicants/draft/resume`: `/apply?token=<jwt>` issues one POST, lands on `/apply` with the query string cleared, and renders the saved step with the draft's fields pre-filled.
+
 
 ---
 
