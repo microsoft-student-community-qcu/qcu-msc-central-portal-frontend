@@ -21,6 +21,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { clearAccountRedirect, hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
 import { isResumeTokenConsumed, markResumeTokenConsumed } from "@/lib/resume-token";
+import {
+  clearApplyProgress,
+  isFileStillReadable,
+  loadApplyProgress,
+  saveApplyProgress,
+  type SavedDocs,
+} from "@/lib/apply-progress";
 
 import {
   Select,
@@ -442,6 +449,12 @@ function ApplyPage() {
   const [idx, setIdx] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
   const [files, setFiles] = useState<Record<string, File>>({});
+  // How many batches the backend has already stored (0 = only Batch 0), plus the
+  // document names it holds. Without this the form treats server-side documents
+  // as missing whenever the in-memory File objects are gone.
+  const [savedStep, setSavedStep] = useState(0);
+  const [savedDocs, setSavedDocs] = useState<SavedDocs>({});
+  const [staleFileNotice, setStaleFileNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -579,6 +592,17 @@ function ApplyPage() {
           console.warn("[resume] draft has no usable currentStep", draftData.currentStep);
         }
         const savedStep = Number.isFinite(rawStep) ? rawStep : 0;
+        setSavedStep(savedStep);
+        // The draft carries the stored document paths (apidocs § 6.5) — surface
+        // them so a resumed applicant is not told their files are missing.
+        setSavedDocs({
+          cor: draftData.certificateOfRegistration
+            ? String(draftData.certificateOfRegistration).split("/").pop()
+            : undefined,
+          cv: draftData.curriculumVitae
+            ? String(draftData.curriculumVitae).split("/").pop()
+            : undefined,
+        });
         const nextStep = Math.min(Math.max(savedStep + 1, 1), 3) as 1 | 2 | 3;
         setFormStep(nextStep);
         setResumeError(null);
@@ -778,6 +802,99 @@ function ApplyPage() {
 
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
+  const progressRestoredRef = useRef(false);
+
+  // Restore a long-running session after a reload / tab eviction. Files are not
+  // restorable, but everything else is — so the applicant lands back where they
+  // were instead of at the start of the flow.
+  useEffect(() => {
+    if (progressRestoredRef.current) return;
+    progressRestoredRef.current = true;
+    if (search.resumeToken) return;
+    const saved = loadApplyProgress();
+    if (!saved) return;
+    setDraftId(saved.draftId);
+    setOcrSessionId(saved.ocrSessionId);
+    setSavedStep(saved.savedStep);
+    setSavedDocs(saved.savedDocs ?? {});
+    setForm((f) => ({ ...f, ...(saved.form as Partial<FormState>) }));
+    setConfirmStudentId(saved.confirm.studentId);
+    setConfirmLastName(saved.confirm.lastName);
+    setConfirmFirstName(saved.confirm.firstName);
+    setConfirmMiddleInitial(saved.confirm.middleInitial);
+    setConfirmEmail(saved.confirm.email);
+    setFormStep(saved.formStep);
+    setStage("form");
+  }, [search.resumeToken]);
+
+  // Persist progress continuously so nothing depends on the tab staying alive.
+  useEffect(() => {
+    if (stage !== "form" || !draftId || submitted) return;
+    saveApplyProgress({
+      draftId,
+      ocrSessionId,
+      savedStep,
+      savedDocs,
+      formStep,
+      form: form as unknown as Record<string, string>,
+      confirm: {
+        studentId: confirmStudentId,
+        lastName: confirmLastName,
+        firstName: confirmFirstName,
+        middleInitial: confirmMiddleInitial,
+        email: confirmEmail,
+      },
+    });
+  }, [
+    stage,
+    draftId,
+    ocrSessionId,
+    savedStep,
+    savedDocs,
+    formStep,
+    form,
+    submitted,
+    confirmStudentId,
+    confirmLastName,
+    confirmFirstName,
+    confirmMiddleInitial,
+    confirmEmail,
+  ]);
+
+  const dropStaleFile = (key: "certificateOfRegistration" | "curriculumVitae") => {
+    setFiles((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setForm((f) => ({ ...f, [key]: "" }) as FormState);
+    setStaleFileNotice(
+      `Your selected ${
+        key === "curriculumVitae" ? "Curriculum Vitae" : "Certificate of Registration"
+      } is no longer available on this device — please choose the file again. All your other answers are safe.`,
+    );
+  };
+
+  // A picked File is an OS-managed handle that can silently die during a long
+  // session (phone locks, file moved/synced, OS reclaims the temp copy). Probe
+  // it while Step 2 is open so the applicant is told early, not at upload time.
+  useEffect(() => {
+    if (stage !== "form" || formStep !== 2) return;
+    let cancelled = false;
+    const probe = async () => {
+      for (const key of ["certificateOfRegistration", "curriculumVitae"] as const) {
+        const file = files[key];
+        if (!file) continue;
+        const ok = await isFileStillReadable(file);
+        if (!ok && !cancelled) dropStaleFile(key);
+      }
+    };
+    const id = window.setInterval(() => void probe(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [stage, formStep, files]);
 
   const progress = useMemo(() => {
     if (submitted) return 100;
@@ -793,6 +910,7 @@ function ApplyPage() {
     }
     if (file) setFiles((prev) => ({ ...prev, [key]: file }));
     setError(null);
+    if (file) setStaleFileNotice(null);
     setStepErrors((prev) => {
       const next = { ...prev };
       delete next[key];
@@ -821,9 +939,9 @@ function ApplyPage() {
     if (!form.campus) errs.campus = "Please select your campus.";
     if (!form.role) errs.role = "Please select your preferred office.";
 
-    if (!files.certificateOfRegistration)
+    if (!files.certificateOfRegistration && !savedDocs.cor)
       errs.certificateOfRegistration = "Certificate of Registration (COR) is required.";
-    if (!files.curriculumVitae)
+    if (!files.curriculumVitae && !savedDocs.cv)
       errs.curriculumVitae = "Curriculum Vitae (CV) is required.";
     return errs;
   };
@@ -888,6 +1006,21 @@ function ApplyPage() {
       setStepErrors({});
       setError(null);
 
+      // `batch-2` requires the draft to still be at step 1 (apidocs/applicants.md
+      // § 6.3). Re-sending it after the documents were stored returns
+      // "draft is at wrong step" — the dead end applicants got stuck in. If the
+      // server already has this batch and no new file was picked, just advance.
+      if (draftId && savedStep >= 2) {
+        // The API exposes no re-upload once the batch is stored; the saved copies
+        // stand, and we say so rather than failing the applicant.
+        if (files.certificateOfRegistration || files.curriculumVitae) {
+          toast.info("Your documents were already saved earlier — we kept those copies.");
+        }
+        setFormStep(3);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
       if (draftId) {
         setSubmittingStep(true);
         try {
@@ -921,6 +1054,7 @@ function ApplyPage() {
             }
             throw new Error(errorMsg);
           }
+          setSavedStep((s) => Math.max(s, 1));
         } catch (err: any) {
           setError(err.message || "Failed to save Step 1 details.");
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -967,6 +1101,19 @@ function ApplyPage() {
           if (!files.curriculumVitae) {
             throw new Error("Please select your Curriculum Vitae file.");
           }
+
+          // Confirm both handles are still readable before uploading, so a stale
+          // file surfaces as a clear "choose it again" prompt instead of an
+          // opaque network failure.
+          for (const key of ["certificateOfRegistration", "curriculumVitae"] as const) {
+            if (!(await isFileStillReadable(files[key]!))) {
+              dropStaleFile(key);
+              throw new Error(
+                "One of your attached files is no longer available on this device. Please choose it again — the rest of your answers are saved.",
+              );
+            }
+          }
+
           fd.append("certificateOfRegistration", files.certificateOfRegistration);
           fd.append("curriculumVitae", files.curriculumVitae);
 
@@ -984,6 +1131,14 @@ function ApplyPage() {
             }
             throw new Error(errorMsg);
           }
+
+          // Remember that the backend now holds these documents.
+          setSavedStep((s) => Math.max(s, 2));
+          setSavedDocs({
+            cor: files.certificateOfRegistration.name,
+            cv: files.curriculumVitae.name,
+          });
+          setStaleFileNotice(null);
         } catch (err: any) {
           setError(err.message || "Failed to save Step 2 details.");
           window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1076,6 +1231,7 @@ function ApplyPage() {
         // Mark the hand-off BEFORE navigating so a re-mount of /apply cannot
         // flash the data-privacy consent screen during the redirect.
         startAccountRedirect();
+        clearApplyProgress();
         setRedirectingToAccount(true);
 
         await navigate({ to: "/apply/account", search: {}, replace: true });
@@ -1176,6 +1332,7 @@ function ApplyPage() {
       // account route is loading, its fresh state would otherwise default to
       // stage "consent" and flash the privacy screen for a frame.
       startAccountRedirect();
+      clearApplyProgress();
       setRedirectingToAccount(true);
 
       await navigate({
@@ -1202,6 +1359,11 @@ function ApplyPage() {
     setStepErrors({});
     setFormStep(1);
     setSubmitted(false);
+    setFiles({});
+    setSavedStep(0);
+    setSavedDocs({});
+    setStaleFileNotice(null);
+    clearApplyProgress();
     submitLockRef.current = false;
     setIsSubmitting(false);
     setProvisionalIdFile(null);
@@ -1715,6 +1877,15 @@ function ApplyPage() {
                       </p>
                     </div>
 
+                    {staleFileNotice && (
+                      <div
+                        role="alert"
+                        className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 font-body text-sm text-amber-900"
+                      >
+                        {staleFileNotice}
+                      </div>
+                    )}
+
                     <div className="space-y-4">
                       <div>
                         <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
@@ -1731,6 +1902,11 @@ function ApplyPage() {
                         {files.certificateOfRegistration && (
                           <p className="mt-1 text-xs text-emerald-600 font-medium">
                             Uploaded: {files.certificateOfRegistration.name}
+                          </p>
+                        )}
+                        {!files.certificateOfRegistration && savedDocs.cor && (
+                          <p className="mt-1 text-xs text-emerald-600 font-medium">
+                            Already saved: {savedDocs.cor} — choose a file only if you want to replace it.
                           </p>
                         )}
                         {stepErrors.certificateOfRegistration && (
@@ -1755,6 +1931,11 @@ function ApplyPage() {
                         {files.curriculumVitae && (
                           <p className="mt-1 text-xs text-emerald-600 font-medium">
                             Uploaded: {files.curriculumVitae.name}
+                          </p>
+                        )}
+                        {!files.curriculumVitae && savedDocs.cv && (
+                          <p className="mt-1 text-xs text-emerald-600 font-medium">
+                            Already saved: {savedDocs.cv} — choose a file only if you want to replace it.
                           </p>
                         )}
                         {stepErrors.curriculumVitae && (

@@ -125,6 +125,10 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 - **Academic & Office**: College, Program *(Filtered dynamically)*, Section, Campus, Preferred Office
 - **Required Documents**: Certificate of Registration (COR) & Curriculum Vitae (CV) file uploaders.
 - **Batch 2 Auto-Save**: Clicking **Next Step** calls `PATCH /api/v1/applicants/draft/:draftId/batch-2` (`FormData`) to save academic info and upload COR & CV files to the server (`currentStep: 2`).
+- **Attachment durability** (see [`docs/fix/stale-attachment-fix.md`](../fix/stale-attachment-fix.md)):
+  - Picked `File` handles are probed for readability every 30s while Step 2 is open and again just before upload. A dead handle clears only that field and asks the applicant to choose the file again — all other answers are preserved.
+  - Once the backend has stored the batch (`savedStep >= 2`), documents already on the server count as present, and **Next Step** advances without re-sending `batch-2` (which would return `400 draft is at wrong step`).
+  - Answers, current step, `draftId`, `ocrSessionId` and saved document names persist in `sessionStorage` (24h TTL) so a reload resumes in place; raw files are never persisted because the server copy is authoritative.
 
 ### Step 3: Experience, Showcase & Final Submission
 - **Background**: Interests/Skills/Hobbies & Past Organizations/Clubs textareas.
