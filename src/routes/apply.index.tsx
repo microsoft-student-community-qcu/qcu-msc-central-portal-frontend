@@ -20,6 +20,8 @@ import { DataPrivacyConsent } from "@/components/DataPrivacyConsent";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { clearAccountRedirect, hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
+import { isResumeTokenConsumed, markResumeTokenConsumed } from "@/lib/resume-token";
+
 import {
   Select,
   SelectContent,
@@ -423,6 +425,11 @@ function ApplyPage() {
   const [alreadySubmittedToken, setAlreadySubmittedToken] = useState<string | null>(null);
   const [draftResumePending, setDraftResumePending] = useState(false);
   const [rehydratingDraft, setRehydratingDraft] = useState(false);
+  const [resumeError, setResumeError] = useState<{
+    kind: "expired" | "timeout" | "generic";
+    message: string;
+  } | null>(null);
+
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [scanAttemptsRemaining, setScanAttemptsRemaining] = useState<number | null>(null);
@@ -465,10 +472,19 @@ function ApplyPage() {
     const token = search.resumeToken;
     if (!token) return;
     // The resume token is single-use on the backend: a second POST with the same
-    // token fails. Guard against re-entry (remount/HMR/effect re-run) so we only
-    // ever consume a given token once per session.
+    // token fails. The ref guards re-entry within this mount (HMR / effect re-run);
+    // sessionStorage guards replay across full page loads (refresh, back button,
+    // an email client re-opening the tab) — that replay is what used to bounce the
+    // applicant back to the start of the application.
     if (consumedResumeTokenRef.current === token) return;
     consumedResumeTokenRef.current = token;
+    if (isResumeTokenConsumed(token)) {
+      // Already redeemed earlier in this tab: just strip the token and stay put.
+      void navigate({ to: "/apply", search: {}, replace: true });
+      return;
+    }
+    markResumeTokenConsumed(token);
+
 
     const resumeDraft = async () => {
       setRehydratingDraft(true);
@@ -487,8 +503,12 @@ function ApplyPage() {
         const json = await res.json();
 
         if (!res.ok || !json.success || !json.data) {
-          throw new Error(json.message || "Invalid or expired draft resume link.");
+          const failure = new Error(json.message || "Invalid or expired draft resume link.");
+          // 400 = token invalid/expired/wrong draft, 404 = draft gone (per apidocs).
+          (failure as any).kind = res.status === 400 || res.status === 404 ? "expired" : "generic";
+          throw failure;
         }
+
 
         // The API wraps the record: { success, data: { draft: {...} } }.
         // Older/alternate shapes returned the draft directly under data.
@@ -552,20 +572,32 @@ function ApplyPage() {
         // Backend currentStep counts *saved* batches (0 = only Batch 0 done), so the
         // next form step is currentStep + 1. Landing on the already-saved step would
         // make the batch PATCH fail with "draft is at wrong step".
-        const savedStep = Number(draftData.currentStep) || 0;
+        const rawStep = Number(draftData.currentStep);
+        if (!Number.isFinite(rawStep)) {
+          // Absent/non-numeric currentStep would silently restart a partially
+          // completed applicant at Step 1 — surface it instead of hiding it.
+          console.warn("[resume] draft has no usable currentStep", draftData.currentStep);
+        }
+        const savedStep = Number.isFinite(rawStep) ? rawStep : 0;
         const nextStep = Math.min(Math.max(savedStep + 1, 1), 3) as 1 | 2 | 3;
         setFormStep(nextStep);
+        setResumeError(null);
         toast.success("Welcome back! Your application draft has been resumed.");
 
-
-        void navigate({ to: "/apply", replace: true });
+        // Must clear `search` — omitting it preserves ?resumeToken=, leaving a spent
+        // single-use token in the URL that a later reload would replay and fail on.
+        void navigate({ to: "/apply", search: {}, replace: true });
       } catch (err: any) {
-        toast.error(
-          err?.name === "AbortError"
-            ? "Resuming your draft timed out. Please try the link again."
-            : err.message || "Failed to resume draft.",
-        );
-        void navigate({ to: "/apply", replace: true });
+        const expired = err?.kind === "expired";
+        const timedOut = err?.name === "AbortError";
+        setResumeError({
+          kind: timedOut ? "timeout" : expired ? "expired" : "generic",
+          message: timedOut
+            ? "Resuming your draft timed out. Please open the link again."
+            : err?.message || "We couldn't resume your application draft.",
+        });
+        void navigate({ to: "/apply", search: {}, replace: true });
+
       } finally {
         clearTimeout(timeoutId);
         setRehydratingDraft(false);
@@ -1239,7 +1271,51 @@ function ApplyPage() {
           </div>
         )}
 
+        {resumeError && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
+              <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Mail className="size-8" />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-display text-xl font-bold">
+                  {resumeError.kind === "timeout"
+                    ? "Resuming took too long"
+                    : resumeError.kind === "expired"
+                      ? "This resume link has expired"
+                      : "We couldn't resume your draft"}
+                </h3>
+                <p className="font-body text-sm text-slate-300 leading-relaxed">
+                  {resumeError.kind === "expired"
+                    ? "Resume links are single-use and valid for 30 minutes. Your saved progress is safe — scan your Student ID again and we'll email you a fresh link."
+                    : resumeError.message}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-400 border border-white/10">
+                💡 Always open the most recent resume email. Nothing you've filled in has been lost.
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResumeError(null);
+                    setStage("scan");
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+                  style={{ background: "var(--gradient-cta)" }}
+                >
+                  <RefreshCw className="size-4" /> Scan your ID to continue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {draftResumePending && (
+
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
             <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
               <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -1256,7 +1332,7 @@ function ApplyPage() {
               </div>
 
               <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-400 border border-white/10">
-                💡 Please check your email inbox (and spam folder) to resume where you left off.
+                💡 Check your inbox (and spam folder) and open the <strong>most recent</strong> resume email — older links stop working. A new link can only be sent once every 30 minutes.
               </div>
 
               <div className="space-y-3 pt-2">
