@@ -171,8 +171,20 @@ During form submission (`submit()` in [`src/routes/apply.index.tsx`](../../src/r
 
 ## 👤 Stage 3: Portal Account Setup (`/apply/account`)
 
-- Upon successful submission to `POST /applicants`, applicant data (including `applicantId`) is saved to `sessionStorage`.
-- User creates password for their registered personal email.
-- Account creation links user login account via `POST /users/link-applicant`.
-- Applicant is automatically logged in and redirected to `/portal/tracking`.
+Account setup requires the single-use, server-signed **`setupToken`**; `POST /api/auth/sign-up/email` rejects requests without one. **Only `POST /api/v1/applicants` (the one-shot fallback) returns a token in its response** — `POST /api/v1/applicants/draft/:draftId/submit` returns `{ id, status }` only and delivers the token exclusively by email (`apidocs/applicants.md` § 6.4). Since the real form always submits through the draft endpoint, the normal path is email-driven.
+
+### No token in this browser (the normal draft path)
+
+- `/apply` stores `{ applicantId, email, studentId, name fields }` in `sessionStorage` (`qcumsc.applicant`) — **no `setupToken`** — and navigates to `/apply/account` with `search: {}` after `startAccountRedirect()`.
+- `/apply/account` renders [`SetupLinkSent`](../../src/components/SetupLinkSent.tsx) instead of the password form: submission confirmed, the target email shown, spam-folder and 48-hour single-use notes, a **Resend setup link** action (`POST /api/v1/applicants/resend-setup-link`), and a sign-in link for applicants who already have an account.
+- Resend is guarded by an in-flight ref lock plus a 60-second visible cooldown so the endpoint's rate limit is respected client-side; a `429` shows a wait message and starts the cooldown.
+- The password form is never shown without a token, which removes the old failure where the applicant typed a password and was rejected with "Setup token is missing". See [`docs/fix/setup-token-missing-fix.md`](../fix/setup-token-missing-fix.md).
+
+### With a token (emailed link, or the one-shot fallback endpoint)
+
+- `/auth/setup-password?token=…` and `/apply/account?token=…` validate through `POST /api/v1/users/validate-setup-token`, then render the password form pre-filled from the validated applicant record.
+- Validation runs **once per token** (`validatedTokenRef` guards remounts / double-effect runs) and is `AbortController`-cancelled with a 20s timeout, so tabs left open never re-hit or hold the backend.
+- On submit: `authClient.signUp.email({ …, setupToken })` → `ensureSession()` → `POST /api/v1/users/link-applicant` → `setPortalUser()` → redirect to `/portal/tracking` (see Stage 03 handshake above). The stale `qcumsc.applicant` entry is cleared on success.
+- Invalid / expired / already-used tokens render the "Setup Link Expired" or "Account Already Created" state — never a silent bounce back into the application.
+
 
