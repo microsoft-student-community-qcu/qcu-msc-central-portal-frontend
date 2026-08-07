@@ -17,7 +17,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { getApiEndpoint } from "@/lib/api-config";
+import {
+  apiFetch,
+  extractErrorMessage,
+  messageFrom,
+  UPLOAD_TIMEOUT_MS,
+} from "@/lib/api-client";
 
 export const Route = createFileRoute("/portal/tracking")({
   head: () => ({
@@ -75,11 +80,10 @@ function TrackingPage() {
   useEffect(() => {
     const loadApplicant = async () => {
       try {
-        const fetchRes = await fetch(getApiEndpoint("/api/v1/applicants/me"), {
+        const fetchRes = await apiFetch("/api/v1/applicants/me", {
           credentials: "include",
         });
         const apiResponse = await fetchRes.json();
-        console.log("Applicant data response:", apiResponse);
 
         if (!fetchRes.ok || !apiResponse?.success) {
           throw new Error(apiResponse?.message || "Failed to load applicant data.");
@@ -110,9 +114,8 @@ function TrackingPage() {
             previousWorksAchievements: applicantData.previousWorksAchievements || "",
           });
         }
-      } catch (err: any) {
-        console.error("Applicant fetch caught error:", err);
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(messageFrom(err, "Failed to load applicant data."));
       } finally {
         setLoading(false);
       }
@@ -172,18 +175,14 @@ function TrackingPage() {
         fd.append("curriculumVitae", cvFile);
       }
 
-      const linkRes = await fetch(getApiEndpoint(`/api/v1/applicants/${applicant.id}/resubmit`), {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
+      const linkRes = await apiFetch(
+        `/api/v1/applicants/${applicant.id}/resubmit`,
+        { method: "POST", credentials: "include", body: fd },
+        { timeoutMs: UPLOAD_TIMEOUT_MS },
+      );
       const apiResponse = await linkRes.json();
-      if (!apiResponse || !apiResponse.success) {
-        let errorMsg = apiResponse?.message || "Failed to resubmit application.";
-        if (apiResponse?.errors) {
-          errorMsg += ": " + Object.values(apiResponse.errors).flat().join(" | ");
-        }
-        throw new Error(errorMsg);
+      if (!linkRes.ok || !apiResponse?.success) {
+        throw new Error(extractErrorMessage(apiResponse, "Failed to resubmit application."));
       }
 
       toast.success("Application updated successfully", {
@@ -193,8 +192,8 @@ function TrackingPage() {
       setApplicant(apiResponse.data);
       setCorFile(null);
       setCvFile(null);
-    } catch (err: any) {
-      toast.error(err.message || "Something went wrong.");
+    } catch (err: unknown) {
+      toast.error(messageFrom(err, "Something went wrong."));
     } finally {
       setSubmitting(false);
     }

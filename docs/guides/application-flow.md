@@ -95,9 +95,11 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
    - **Step mapping:** `currentStep` counts *saved* batches (`0` = only Batch 0 done), so the form opens at `currentStep + 1` (clamped to 1–3). Opening on the already-saved step made the next batch PATCH fail with "draft is at wrong step".
    - The frontend rehydrates the state, transitions directly to the saved step in `stage: "form"`, displays a welcome toast, and clears `resumeToken` from the URL.
 
-   - **Single-use guarantee:** the token is consumed exactly once. `consumedResumeTokenRef` records the token before the request is issued, so a remount, HMR reload, or effect re-run never re-POSTs the same token (the backend rejects a replayed token, which would surface as a false "Invalid or expired draft resume link." error).
-   - **Timeout guard:** the resume POST is aborted after 25s (`AbortController`), showing "Resuming your draft timed out. Please try the link again." and returning to `/apply` — an unreachable API can no longer leave the applicant on an endless loader.
+   - **Single-use guarantee:** the token is consumed exactly once. `consumedResumeTokenRef` records the token before the request is issued (guarding remount / HMR / effect re-runs), and [`src/lib/resume-token.ts`](../../src/lib/resume-token.ts) additionally records it in `sessionStorage` so a **full page reload** (refresh, back button, email client re-opening the tab) cannot replay a spent token. Both the success and failure paths navigate with `search: {}`, so `?resumeToken=` is stripped from the URL and can never be redeemed twice. Without these two guarantees the replayed token was rejected by the backend and the applicant fell back to the default `stage: "consent"` — the "looping back through the application" bug. See [`docs/fix/resume-link-loop-fix.md`](../fix/resume-link-loop-fix.md).
+   - **Failure is visible, not silent:** a failed resume sets `resumeError` and renders a dedicated modal instead of dropping the applicant on the consent screen. `400`/`404` (invalid, expired, already used, draft gone) → "This resume link has expired" with a *Scan your ID to continue* action; `AbortError` → timeout copy; anything else → the API message. Re-scanning after the 30-minute cooldown issues a **fresh** link to the *same* draft at the *same* saved step — no duplicate application, no lost progress.
+   - **Timeout guard:** the resume POST is aborted after 25s (`AbortController`), showing "Resuming your draft timed out. Please open the link again."
    - **Visible state:** while the draft is being fetched, `/apply` renders `<CosmicLoader label="Resuming your application draft" />` (previously `rehydratingDraft` was tracked but never rendered).
+
    - Verified end-to-end against a stubbed `/api/v1/applicants/draft/resume`: `/apply?token=<jwt>` issues one POST, lands on `/apply` with the query string cleared, and renders the saved step with the draft's fields pre-filled.
    - **Console `404` on the emailed link is a hosting artifact, not a routing bug.** `dev.msc-qcu.tech` is served from an Azure Storage static website (`x-ms-error-code: WebContentNotFound`), which ignores `staticwebapp.config.json`; every deep link (`/apply`, `/portal/login`, `/apply/resume?...`) is served through the error document, so the SPA shell renders correctly but the document response carries HTTP 404. Live re-test of the emailed link redirects to `/apply` and rehydrates the draft successfully. To make hosting return the shell for deep links, `bun run build:swa` now also emits `dist/client/index.html` and `dist/client/404.html` (copies of `_shell.html`) via [`scripts/emit-spa-fallback.mjs`](../../scripts/emit-spa-fallback.mjs); the storage account's index/error document settings must point at those files.
 
@@ -123,6 +125,10 @@ The stale `qcumsc.applicant` session-storage entry (which carries the single-use
 - **Academic & Office**: College, Program *(Filtered dynamically)*, Section, Campus, Preferred Office
 - **Required Documents**: Certificate of Registration (COR) & Curriculum Vitae (CV) file uploaders.
 - **Batch 2 Auto-Save**: Clicking **Next Step** calls `PATCH /api/v1/applicants/draft/:draftId/batch-2` (`FormData`) to save academic info and upload COR & CV files to the server (`currentStep: 2`).
+- **Attachment durability** (see [`docs/fix/stale-attachment-fix.md`](../fix/stale-attachment-fix.md)):
+  - Picked `File` handles are probed for readability every 30s while Step 2 is open and again just before upload. A dead handle clears only that field and asks the applicant to choose the file again — all other answers are preserved.
+  - Once the backend has stored the batch (`savedStep >= 2`), documents already on the server count as present, and **Next Step** advances without re-sending `batch-2` (which would return `400 draft is at wrong step`).
+  - Answers, current step, `draftId`, `ocrSessionId` and saved document names persist in `sessionStorage` (24h TTL) so a reload resumes in place; raw files are never persisted because the server copy is authoritative.
 
 ### Step 3: Experience, Showcase & Final Submission
 - **Background**: Interests/Skills/Hobbies & Past Organizations/Clubs textareas.
@@ -169,8 +175,20 @@ During form submission (`submit()` in [`src/routes/apply.index.tsx`](../../src/r
 
 ## 👤 Stage 3: Portal Account Setup (`/apply/account`)
 
-- Upon successful submission to `POST /applicants`, applicant data (including `applicantId`) is saved to `sessionStorage`.
-- User creates password for their registered personal email.
-- Account creation links user login account via `POST /users/link-applicant`.
-- Applicant is automatically logged in and redirected to `/portal/tracking`.
+Account setup requires the single-use, server-signed **`setupToken`**; `POST /api/auth/sign-up/email` rejects requests without one. **Only `POST /api/v1/applicants` (the one-shot fallback) returns a token in its response** — `POST /api/v1/applicants/draft/:draftId/submit` returns `{ id, status }` only and delivers the token exclusively by email (`apidocs/applicants.md` § 6.4). Since the real form always submits through the draft endpoint, the normal path is email-driven.
+
+### No token in this browser (the normal draft path)
+
+- `/apply` stores `{ applicantId, email, studentId, name fields }` in `sessionStorage` (`qcumsc.applicant`) — **no `setupToken`** — and navigates to `/apply/account` with `search: {}` after `startAccountRedirect()`.
+- `/apply/account` renders [`SetupLinkSent`](../../src/components/SetupLinkSent.tsx) instead of the password form: submission confirmed, the target email shown, spam-folder and 48-hour single-use notes, a **Resend setup link** action (`POST /api/v1/applicants/resend-setup-link`), and a sign-in link for applicants who already have an account.
+- Resend is guarded by an in-flight ref lock plus a 60-second visible cooldown so the endpoint's rate limit is respected client-side; a `429` shows a wait message and starts the cooldown.
+- The password form is never shown without a token, which removes the old failure where the applicant typed a password and was rejected with "Setup token is missing". See [`docs/fix/setup-token-missing-fix.md`](../fix/setup-token-missing-fix.md).
+
+### With a token (emailed link, or the one-shot fallback endpoint)
+
+- `/auth/setup-password?token=…` and `/apply/account?token=…` validate through `POST /api/v1/users/validate-setup-token`, then render the password form pre-filled from the validated applicant record.
+- Validation runs **once per token** (`validatedTokenRef` guards remounts / double-effect runs) and is `AbortController`-cancelled with a 20s timeout, so tabs left open never re-hit or hold the backend.
+- On submit: `authClient.signUp.email({ …, setupToken })` → `ensureSession()` → `POST /api/v1/users/link-applicant` → `setPortalUser()` → redirect to `/portal/tracking` (see Stage 03 handshake above). The stale `qcumsc.applicant` entry is cleared on success.
+- Invalid / expired / already-used tokens render the "Setup Link Expired" or "Account Already Created" state — never a silent bounce back into the application.
+
 

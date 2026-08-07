@@ -20,6 +20,15 @@ import { DataPrivacyConsent } from "@/components/DataPrivacyConsent";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { clearAccountRedirect, hasActiveAccountRedirect, startAccountRedirect } from "@/lib/application-flow";
+import { isResumeTokenConsumed, markResumeTokenConsumed } from "@/lib/resume-token";
+import {
+  clearApplyProgress,
+  isFileStillReadable,
+  loadApplyProgress,
+  saveApplyProgress,
+  type SavedDocs,
+} from "@/lib/apply-progress";
+
 import {
   Select,
   SelectContent,
@@ -29,6 +38,12 @@ import {
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
 import { getApiEndpoint } from "@/lib/api-config";
+import {
+  apiFetch,
+  extractErrorMessage,
+  messageFrom,
+  UPLOAD_TIMEOUT_MS,
+} from "@/lib/api-client";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { OFFICES } from "@/constants/offices";
 import { toast } from "sonner";
@@ -43,9 +58,15 @@ const IdUploadScanner = lazyWithRetry(() =>
 
 function sanitizeOcrMessage(message: string | undefined | null): string {
   if (!message) return "Could not read Student ID. Please re-scan your ID card.";
-  // Backend error text sometimes includes raw HTTP endpoints; strip those for end users.
-  if (/ocr session expired/i.test(message) || /POST\/api\/v1/i.test(message)) {
+  const normalized = message.toLowerCase();
+  // Backend copy for an expired OCR session varies ("OCR session expired",
+  // "Session expired, please re-verify"); match the stable part.
+  if (normalized.includes("session expired") || normalized.includes("re-verify")) {
     return "Your ID verification session expired. Please re-scan your student ID to verify it again.";
+  }
+  // Never surface raw endpoint/stack details to applicants.
+  if (/\/api\/v\d/i.test(message) || /https?:\/\//i.test(message)) {
+    return "We couldn't verify your ID right now. Please re-scan your student ID and try again.";
   }
   return message;
 }
@@ -193,6 +214,12 @@ const validDateOfBirth = (v: string) => {
   if (!v.trim()) return "Please enter your date of birth.";
   const date = new Date(v);
   const maxDate = new Date(MAX_DATE_OF_BIRTH);
+  if (Number.isNaN(date.getTime())) return "Please enter a valid date of birth.";
+  if (date > maxDate) {
+    return "You must be born on or before December 31, 2008 to apply.";
+  }
+  const minDate = new Date("1950-01-01");
+  if (date < minDate) return "Please enter a valid date of birth.";
   return null;
 };
 
@@ -423,6 +450,11 @@ function ApplyPage() {
   const [alreadySubmittedToken, setAlreadySubmittedToken] = useState<string | null>(null);
   const [draftResumePending, setDraftResumePending] = useState(false);
   const [rehydratingDraft, setRehydratingDraft] = useState(false);
+  const [resumeError, setResumeError] = useState<{
+    kind: "expired" | "timeout" | "generic";
+    message: string;
+  } | null>(null);
+
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
   const [scanAttemptsRemaining, setScanAttemptsRemaining] = useState<number | null>(null);
@@ -435,10 +467,18 @@ function ApplyPage() {
   const [idx, setIdx] = useState(0);
   const [form, setForm] = useState<FormState>(INITIAL);
   const [files, setFiles] = useState<Record<string, File>>({});
+  // How many batches the backend has already stored (0 = only Batch 0), plus the
+  // document names it holds. Without this the form treats server-side documents
+  // as missing whenever the in-memory File objects are gone.
+  const [savedStep, setSavedStep] = useState(0);
+  const [savedDocs, setSavedDocs] = useState<SavedDocs>({});
+  const [staleFileNotice, setStaleFileNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
+  // Holds "<draftId|new>:<step>" while a step advance is in flight.
+  const stepLockRef = useRef<string | null>(null);
   const consumedResumeTokenRef = useRef<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -465,10 +505,19 @@ function ApplyPage() {
     const token = search.resumeToken;
     if (!token) return;
     // The resume token is single-use on the backend: a second POST with the same
-    // token fails. Guard against re-entry (remount/HMR/effect re-run) so we only
-    // ever consume a given token once per session.
+    // token fails. The ref guards re-entry within this mount (HMR / effect re-run);
+    // sessionStorage guards replay across full page loads (refresh, back button,
+    // an email client re-opening the tab) — that replay is what used to bounce the
+    // applicant back to the start of the application.
     if (consumedResumeTokenRef.current === token) return;
     consumedResumeTokenRef.current = token;
+    if (isResumeTokenConsumed(token)) {
+      // Already redeemed earlier in this tab: just strip the token and stay put.
+      void navigate({ to: "/apply", search: {}, replace: true });
+      return;
+    }
+    markResumeTokenConsumed(token);
+
 
     const resumeDraft = async () => {
       setRehydratingDraft(true);
@@ -487,8 +536,12 @@ function ApplyPage() {
         const json = await res.json();
 
         if (!res.ok || !json.success || !json.data) {
-          throw new Error(json.message || "Invalid or expired draft resume link.");
+          const failure = new Error(json.message || "Invalid or expired draft resume link.");
+          // 400 = token invalid/expired/wrong draft, 404 = draft gone (per apidocs).
+          (failure as any).kind = res.status === 400 || res.status === 404 ? "expired" : "generic";
+          throw failure;
         }
+
 
         // The API wraps the record: { success, data: { draft: {...} } }.
         // Older/alternate shapes returned the draft directly under data.
@@ -552,20 +605,43 @@ function ApplyPage() {
         // Backend currentStep counts *saved* batches (0 = only Batch 0 done), so the
         // next form step is currentStep + 1. Landing on the already-saved step would
         // make the batch PATCH fail with "draft is at wrong step".
-        const savedStep = Number(draftData.currentStep) || 0;
+        const rawStep = Number(draftData.currentStep);
+        if (!Number.isFinite(rawStep)) {
+          // Absent/non-numeric currentStep would silently restart a partially
+          // completed applicant at Step 1 — surface it instead of hiding it.
+          console.warn("[resume] draft has no usable currentStep", draftData.currentStep);
+        }
+        const savedStep = Number.isFinite(rawStep) ? rawStep : 0;
+        setSavedStep(savedStep);
+        // The draft carries the stored document paths (apidocs § 6.5) — surface
+        // them so a resumed applicant is not told their files are missing.
+        setSavedDocs({
+          cor: draftData.certificateOfRegistration
+            ? String(draftData.certificateOfRegistration).split("/").pop()
+            : undefined,
+          cv: draftData.curriculumVitae
+            ? String(draftData.curriculumVitae).split("/").pop()
+            : undefined,
+        });
         const nextStep = Math.min(Math.max(savedStep + 1, 1), 3) as 1 | 2 | 3;
         setFormStep(nextStep);
+        setResumeError(null);
         toast.success("Welcome back! Your application draft has been resumed.");
 
-
-        void navigate({ to: "/apply", replace: true });
+        // Must clear `search` — omitting it preserves ?resumeToken=, leaving a spent
+        // single-use token in the URL that a later reload would replay and fail on.
+        void navigate({ to: "/apply", search: {}, replace: true });
       } catch (err: any) {
-        toast.error(
-          err?.name === "AbortError"
-            ? "Resuming your draft timed out. Please try the link again."
-            : err.message || "Failed to resume draft.",
-        );
-        void navigate({ to: "/apply", replace: true });
+        const expired = err?.kind === "expired";
+        const timedOut = err?.name === "AbortError";
+        setResumeError({
+          kind: timedOut ? "timeout" : expired ? "expired" : "generic",
+          message: timedOut
+            ? "Resuming your draft timed out. Please open the link again."
+            : err?.message || "We couldn't resume your application draft.",
+        });
+        void navigate({ to: "/apply", search: {}, replace: true });
+
       } finally {
         clearTimeout(timeoutId);
         setRehydratingDraft(false);
@@ -587,7 +663,11 @@ function ApplyPage() {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
 
-      const res = await fetch(getApiEndpoint("/ocr/verify"), { method: "POST", body: fd });
+      const res = await apiFetch(
+        "/ocr/verify",
+        { method: "POST", body: fd },
+        { timeoutMs: UPLOAD_TIMEOUT_MS },
+      );
       const json = await res.json();
 
       if (res.ok && json.success) {
@@ -705,7 +785,7 @@ function ApplyPage() {
           payload.middleInitial = cleanMI;
         }
 
-        const res = await fetch(getApiEndpoint("/api/v1/applicants/draft"), {
+        const res = await apiFetch("/api/v1/applicants/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -713,12 +793,7 @@ function ApplyPage() {
         const json = await res.json();
 
         if (!res.ok || !json.success) {
-          let errorMsg = json.message || "Failed to create application draft.";
-          if (json.errors) {
-            const detailErrs = Object.values(json.errors).flat().join(" | ");
-            errorMsg = `${errorMsg}: ${detailErrs}`;
-          }
-          throw new Error(errorMsg);
+          throw new Error(extractErrorMessage(json, "Failed to create application draft."));
         }
 
         if (json.data?.draftId) {
@@ -737,8 +812,8 @@ function ApplyPage() {
       setStepErrors({});
       setError(null);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err: any) {
-      setOcrError(err.message || "Failed to save application draft.");
+    } catch (err: unknown) {
+      setOcrError(messageFrom(err, "Failed to save application draft."));
     } finally {
       setSubmittingDraft(false);
     }
@@ -746,6 +821,99 @@ function ApplyPage() {
 
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [stepErrors, setStepErrors] = useState<Record<string, string>>({});
+  const progressRestoredRef = useRef(false);
+
+  // Restore a long-running session after a reload / tab eviction. Files are not
+  // restorable, but everything else is — so the applicant lands back where they
+  // were instead of at the start of the flow.
+  useEffect(() => {
+    if (progressRestoredRef.current) return;
+    progressRestoredRef.current = true;
+    if (search.resumeToken) return;
+    const saved = loadApplyProgress();
+    if (!saved) return;
+    setDraftId(saved.draftId);
+    setOcrSessionId(saved.ocrSessionId);
+    setSavedStep(saved.savedStep);
+    setSavedDocs(saved.savedDocs ?? {});
+    setForm((f) => ({ ...f, ...(saved.form as Partial<FormState>) }));
+    setConfirmStudentId(saved.confirm.studentId);
+    setConfirmLastName(saved.confirm.lastName);
+    setConfirmFirstName(saved.confirm.firstName);
+    setConfirmMiddleInitial(saved.confirm.middleInitial);
+    setConfirmEmail(saved.confirm.email);
+    setFormStep(saved.formStep);
+    setStage("form");
+  }, [search.resumeToken]);
+
+  // Persist progress continuously so nothing depends on the tab staying alive.
+  useEffect(() => {
+    if (stage !== "form" || !draftId || submitted) return;
+    saveApplyProgress({
+      draftId,
+      ocrSessionId,
+      savedStep,
+      savedDocs,
+      formStep,
+      form: form as unknown as Record<string, string>,
+      confirm: {
+        studentId: confirmStudentId,
+        lastName: confirmLastName,
+        firstName: confirmFirstName,
+        middleInitial: confirmMiddleInitial,
+        email: confirmEmail,
+      },
+    });
+  }, [
+    stage,
+    draftId,
+    ocrSessionId,
+    savedStep,
+    savedDocs,
+    formStep,
+    form,
+    submitted,
+    confirmStudentId,
+    confirmLastName,
+    confirmFirstName,
+    confirmMiddleInitial,
+    confirmEmail,
+  ]);
+
+  const dropStaleFile = (key: "certificateOfRegistration" | "curriculumVitae") => {
+    setFiles((prev) => {
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    setForm((f) => ({ ...f, [key]: "" }) as FormState);
+    setStaleFileNotice(
+      `Your selected ${
+        key === "curriculumVitae" ? "Curriculum Vitae" : "Certificate of Registration"
+      } is no longer available on this device — please choose the file again. All your other answers are safe.`,
+    );
+  };
+
+  // A picked File is an OS-managed handle that can silently die during a long
+  // session (phone locks, file moved/synced, OS reclaims the temp copy). Probe
+  // it while Step 2 is open so the applicant is told early, not at upload time.
+  useEffect(() => {
+    if (stage !== "form" || formStep !== 2) return;
+    let cancelled = false;
+    const probe = async () => {
+      for (const key of ["certificateOfRegistration", "curriculumVitae"] as const) {
+        const file = files[key];
+        if (!file) continue;
+        const ok = await isFileStillReadable(file);
+        if (!ok && !cancelled) dropStaleFile(key);
+      }
+    };
+    const id = window.setInterval(() => void probe(), 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [stage, formStep, files]);
 
   const progress = useMemo(() => {
     if (submitted) return 100;
@@ -761,6 +929,7 @@ function ApplyPage() {
     }
     if (file) setFiles((prev) => ({ ...prev, [key]: file }));
     setError(null);
+    if (file) setStaleFileNotice(null);
     setStepErrors((prev) => {
       const next = { ...prev };
       delete next[key];
@@ -789,9 +958,9 @@ function ApplyPage() {
     if (!form.campus) errs.campus = "Please select your campus.";
     if (!form.role) errs.role = "Please select your preferred office.";
 
-    if (!files.certificateOfRegistration)
+    if (!files.certificateOfRegistration && !savedDocs.cor)
       errs.certificateOfRegistration = "Certificate of Registration (COR) is required.";
-    if (!files.curriculumVitae)
+    if (!files.curriculumVitae && !savedDocs.cv)
       errs.curriculumVitae = "Curriculum Vitae (CV) is required.";
     return errs;
   };
@@ -843,8 +1012,7 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const goNextStep = async () => {
-    if (submitLockRef.current || submittingStep || isSubmitting) return;
+  const runNextStep = async () => {
     if (formStep === 1) {
       const errs = validateStep1();
       if (Object.keys(errs).length > 0) {
@@ -855,6 +1023,21 @@ function ApplyPage() {
       }
       setStepErrors({});
       setError(null);
+
+      // `batch-2` requires the draft to still be at step 1 (apidocs/applicants.md
+      // § 6.3). Re-sending it after the documents were stored returns
+      // "draft is at wrong step" — the dead end applicants got stuck in. If the
+      // server already has this batch and no new file was picked, just advance.
+      if (draftId && savedStep >= 2) {
+        // The API exposes no re-upload once the batch is stored; the saved copies
+        // stand, and we say so rather than failing the applicant.
+        if (files.certificateOfRegistration || files.curriculumVitae) {
+          toast.info("Your documents were already saved earlier — we kept those copies.");
+        }
+        setFormStep(3);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
 
       if (draftId) {
         setSubmittingStep(true);
@@ -874,7 +1057,7 @@ function ApplyPage() {
             facebookLink: form.facebookLink,
           };
 
-          const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/batch-1`), {
+          const res = await apiFetch(`/api/v1/applicants/draft/${draftId}/batch-1`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -882,15 +1065,11 @@ function ApplyPage() {
           const json = await res.json();
 
           if (!res.ok || !json.success) {
-            let errorMsg = json.message || "Failed to save personal information.";
-            if (json.errors) {
-              const detailErrs = Object.values(json.errors).flat().join(" | ");
-              errorMsg = `${errorMsg}: ${detailErrs}`;
-            }
-            throw new Error(errorMsg);
+            throw new Error(extractErrorMessage(json, "Failed to save personal information."));
           }
-        } catch (err: any) {
-          setError(err.message || "Failed to save Step 1 details.");
+          setSavedStep((s) => Math.max(s, 1));
+        } catch (err: unknown) {
+          setError(messageFrom(err, "Failed to save Step 1 details."));
           window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         } finally {
@@ -935,25 +1114,44 @@ function ApplyPage() {
           if (!files.curriculumVitae) {
             throw new Error("Please select your Curriculum Vitae file.");
           }
+
+          // Confirm both handles are still readable before uploading, so a stale
+          // file surfaces as a clear "choose it again" prompt instead of an
+          // opaque network failure.
+          for (const key of ["certificateOfRegistration", "curriculumVitae"] as const) {
+            if (!(await isFileStillReadable(files[key]!))) {
+              dropStaleFile(key);
+              throw new Error(
+                "One of your attached files is no longer available on this device. Please choose it again — the rest of your answers are saved.",
+              );
+            }
+          }
+
           fd.append("certificateOfRegistration", files.certificateOfRegistration);
           fd.append("curriculumVitae", files.curriculumVitae);
 
-          const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/batch-2`), {
-            method: "PATCH",
-            body: fd,
-          });
+          const res = await apiFetch(
+            `/api/v1/applicants/draft/${draftId}/batch-2`,
+            { method: "PATCH", body: fd },
+            { timeoutMs: UPLOAD_TIMEOUT_MS },
+          );
           const json = await res.json();
 
           if (!res.ok || !json.success) {
-            let errorMsg = json.message || "Failed to save academic details and files.";
-            if (json.errors) {
-              const detailErrs = Object.values(json.errors).flat().join(" | ");
-              errorMsg = `${errorMsg}: ${detailErrs}`;
-            }
-            throw new Error(errorMsg);
+            throw new Error(
+              extractErrorMessage(json, "Failed to save academic details and files."),
+            );
           }
-        } catch (err: any) {
-          setError(err.message || "Failed to save Step 2 details.");
+
+          // Remember that the backend now holds these documents.
+          setSavedStep((s) => Math.max(s, 2));
+          setSavedDocs({
+            cor: files.certificateOfRegistration.name,
+            cv: files.curriculumVitae.name,
+          });
+          setStaleFileNotice(null);
+        } catch (err: unknown) {
+          setError(messageFrom(err, "Failed to save Step 2 details."));
           window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         } finally {
@@ -977,7 +1175,25 @@ function ApplyPage() {
     }
   };
 
+  /**
+   * Synchronous double-submit guard. The ref flips before any await, so a
+   * second click (or a duplicate tab advancing the same draft step) is
+   * dropped even before React re-renders the disabled button state.
+   */
+  const goNextStep = async () => {
+    if (submitLockRef.current || submittingStep || isSubmitting) return;
+    const lockKey = `${draftId ?? "new"}:${formStep}`;
+    if (stepLockRef.current) return;
+    stepLockRef.current = lockKey;
+    try {
+      await runNextStep();
+    } finally {
+      if (stepLockRef.current === lockKey) stepLockRef.current = null;
+    }
+  };
+
   const goBackStep = () => {
+    if (stepLockRef.current) return;
     if (submitLockRef.current) return;
     setStepErrors({});
     setError(null);
@@ -1004,7 +1220,7 @@ function ApplyPage() {
         if (form.githubOrProjects) payload.githubOrProjectLinks = form.githubOrProjects;
         if (form.previousWorks) payload.previousWorksAchievements = form.previousWorks;
 
-        const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/submit`), {
+        const res = await apiFetch(`/api/v1/applicants/draft/${draftId}/submit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -1012,12 +1228,7 @@ function ApplyPage() {
         const json = await res.json();
 
         if (!res.ok || !json.success) {
-          let errorMsg = json.message || "Submission failed.";
-          if (json.errors) {
-            const detailErrs = Object.values(json.errors).flat().join(" | ");
-            errorMsg = `${errorMsg}: ${detailErrs}`;
-          }
-          throw new Error(errorMsg);
+          throw new Error(extractErrorMessage(json, "Submission failed."));
         }
 
         try {
@@ -1033,19 +1244,23 @@ function ApplyPage() {
               firstName: confirmFirstName.trim(),
               lastName: confirmLastName.trim(),
               middleInitial: cleanMI,
-              setupToken: json.data?.setupToken,
+              // No setupToken here on purpose: the draft-submit endpoint only
+              // emails the password-setup link (apidocs/applicants.md § 6.4).
             }),
           );
         } catch {
           /* ignore */
         }
 
-        await navigate({
-          to: "/apply/account",
-          search: json.data?.setupToken ? { token: json.data.setupToken } : {},
-          replace: true,
-        });
+        // Mark the hand-off BEFORE navigating so a re-mount of /apply cannot
+        // flash the data-privacy consent screen during the redirect.
+        startAccountRedirect();
+        clearApplyProgress();
+        setRedirectingToAccount(true);
+
+        await navigate({ to: "/apply/account", search: {}, replace: true });
         return;
+
       }
 
       // Fallback single endpoint if draftId is not available
@@ -1102,19 +1317,15 @@ function ApplyPage() {
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
-      const res = await fetch(getApiEndpoint("/applicants"), {
-        method: "POST",
-        body: fd,
-      });
+      const res = await apiFetch(
+        "/applicants",
+        { method: "POST", body: fd },
+        { timeoutMs: UPLOAD_TIMEOUT_MS },
+      );
       const json = await res.json();
 
       if (!res.ok || !json.success) {
-        let errorMsg = json.message || "Submission failed.";
-        if (json.errors) {
-          const detailErrs = Object.values(json.errors).flat().join(" | ");
-          errorMsg = `${errorMsg}: ${detailErrs}`;
-        }
-        throw new Error(errorMsg);
+        throw new Error(extractErrorMessage(json, "Submission failed."));
       }
 
       try {
@@ -1141,6 +1352,7 @@ function ApplyPage() {
       // account route is loading, its fresh state would otherwise default to
       // stage "consent" and flash the privacy screen for a frame.
       startAccountRedirect();
+      clearApplyProgress();
       setRedirectingToAccount(true);
 
       await navigate({
@@ -1167,7 +1379,13 @@ function ApplyPage() {
     setStepErrors({});
     setFormStep(1);
     setSubmitted(false);
+    setFiles({});
+    setSavedStep(0);
+    setSavedDocs({});
+    setStaleFileNotice(null);
+    clearApplyProgress();
     submitLockRef.current = false;
+    stepLockRef.current = null;
     setIsSubmitting(false);
     setProvisionalIdFile(null);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);
@@ -1239,7 +1457,51 @@ function ApplyPage() {
           </div>
         )}
 
+        {resumeError && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
+              <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Mail className="size-8" />
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="font-display text-xl font-bold">
+                  {resumeError.kind === "timeout"
+                    ? "Resuming took too long"
+                    : resumeError.kind === "expired"
+                      ? "This resume link has expired"
+                      : "We couldn't resume your draft"}
+                </h3>
+                <p className="font-body text-sm text-slate-300 leading-relaxed">
+                  {resumeError.kind === "expired"
+                    ? "Resume links are single-use and valid for 30 minutes. Your saved progress is safe — scan your Student ID again and we'll email you a fresh link."
+                    : resumeError.message}
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-400 border border-white/10">
+                💡 Always open the most recent resume email. Nothing you've filled in has been lost.
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setResumeError(null);
+                    setStage("scan");
+                  }}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3.5 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+                  style={{ background: "var(--gradient-cta)" }}
+                >
+                  <RefreshCw className="size-4" /> Scan your ID to continue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {draftResumePending && (
+
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
             <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-center text-white">
               <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -1256,7 +1518,7 @@ function ApplyPage() {
               </div>
 
               <div className="rounded-xl bg-white/5 p-3 text-xs text-slate-400 border border-white/10">
-                💡 Please check your email inbox (and spam folder) to resume where you left off.
+                💡 Check your inbox (and spam folder) and open the <strong>most recent</strong> resume email — older links stop working. A new link can only be sent once every 30 minutes.
               </div>
 
               <div className="space-y-3 pt-2">
@@ -1636,6 +1898,15 @@ function ApplyPage() {
                       </p>
                     </div>
 
+                    {staleFileNotice && (
+                      <div
+                        role="alert"
+                        className="rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 font-body text-sm text-amber-900"
+                      >
+                        {staleFileNotice}
+                      </div>
+                    )}
+
                     <div className="space-y-4">
                       <div>
                         <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.15em] text-brand-blue-deep/75">
@@ -1652,6 +1923,11 @@ function ApplyPage() {
                         {files.certificateOfRegistration && (
                           <p className="mt-1 text-xs text-emerald-600 font-medium">
                             Uploaded: {files.certificateOfRegistration.name}
+                          </p>
+                        )}
+                        {!files.certificateOfRegistration && savedDocs.cor && (
+                          <p className="mt-1 text-xs text-emerald-600 font-medium">
+                            Already saved: {savedDocs.cor} — choose a file only if you want to replace it.
                           </p>
                         )}
                         {stepErrors.certificateOfRegistration && (
@@ -1676,6 +1952,11 @@ function ApplyPage() {
                         {files.curriculumVitae && (
                           <p className="mt-1 text-xs text-emerald-600 font-medium">
                             Uploaded: {files.curriculumVitae.name}
+                          </p>
+                        )}
+                        {!files.curriculumVitae && savedDocs.cv && (
+                          <p className="mt-1 text-xs text-emerald-600 font-medium">
+                            Already saved: {savedDocs.cv} — choose a file only if you want to replace it.
                           </p>
                         )}
                         {stepErrors.curriculumVitae && (

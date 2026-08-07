@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { IdCard, Mail, ShieldCheck, User, GraduationCap, BookOpen, MapPin, Building2, Briefcase } from "lucide-react";
 import { InfoTile, PortalCard, PortalShell } from "@/components/PortalShell";
 import { usePortalUser } from "@/lib/portal-auth";
-import { getApiEndpoint } from "@/lib/api-config";
+import { apiFetch, messageFrom } from "@/lib/api-client";
 
 export const Route = createFileRoute("/portal/profile")({
   head: () => ({ meta: [{ title: "Profile · QCU MSC" }] }),
@@ -15,24 +15,32 @@ function ProfilePage() {
   const navigate = useNavigate();
   const [applicantData, setApplicantData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchApplicantData = async () => {
       try {
-        const fetchRes = await fetch(getApiEndpoint("/api/v1/applicants/me"), {
+        const fetchRes = await apiFetch("/api/v1/applicants/me", {
           credentials: "include",
         });
         const resData = await fetchRes.json();
-        if (resData?.success && resData.data) {
-          setApplicantData(resData.data);
+        if (cancelled) return;
+        if (!fetchRes.ok || !resData?.success) {
+          throw new Error(resData?.message || "We couldn't load your profile details.");
         }
-      } catch {
-        /* ignore */
+        setApplicantData(resData.data ?? null);
+        setLoadError(null);
+      } catch (err: unknown) {
+        if (!cancelled) setLoadError(messageFrom(err, "We couldn't load your profile details."));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    fetchApplicantData();
+    void fetchApplicantData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!user) {
@@ -62,6 +70,21 @@ function ProfilePage() {
       subtitle="Your astronaut record — verified against your QCU identity before launch."
     >
       <div className="space-y-6">
+        {loadError && !loading && (
+          <div
+            role="alert"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-brand-orange/30 bg-brand-orange/10 px-4 py-3"
+          >
+            <p className="font-body text-xs text-brand-blue-deep/80">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-full bg-brand-blue-deep px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-[0.15em] text-white hover:bg-brand-blue"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         <PortalCard title="Identity & Orbit" icon={<User className="size-5 text-brand-blue-deep" />}>
           <div className="grid gap-4 sm:grid-cols-3">
             <InfoTile icon={<User className="size-4" />} label="Full name" value={user.fullName} />
