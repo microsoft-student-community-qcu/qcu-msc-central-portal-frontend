@@ -12,7 +12,7 @@ import {
 } from "@/lib/portal-auth";
 import { authClient } from "@/lib/auth-client";
 
-import { getApiEndpoint } from "@/lib/api-config";
+import { apiFetch, extractErrorMessage, messageFrom } from "@/lib/api-client";
 
 export const Route = createFileRoute("/portal/login")({
   head: () => ({
@@ -38,7 +38,7 @@ function PortalLoginPage() {
     }
 
     try {
-      const res = await fetch(getApiEndpoint("/api/v1/auth/student/sign-in"), {
+      const res = await apiFetch("/api/v1/auth/student/sign-in", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -53,7 +53,9 @@ function PortalLoginPage() {
       const resData = await res.json();
 
       if (!res.ok) {
-        setError(resData.message || "Failed to sign in. Please check your credentials.");
+        setError(
+          extractErrorMessage(resData, "Failed to sign in. Please check your credentials."),
+        );
         return;
       }
 
@@ -76,9 +78,8 @@ function PortalLoginPage() {
         setPortalUser(backendUser);
         void navigate({ to: routeForRole(portalRole) });
       }
-    } catch (err) {
-      console.error(err);
-      setError("An unexpected error occurred. Please try again.");
+    } catch (err: unknown) {
+      setError(messageFrom(err, "An unexpected error occurred. Please try again."));
     }
   };
 

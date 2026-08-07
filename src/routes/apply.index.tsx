@@ -38,6 +38,12 @@ import {
 } from "@/components/ui/select";
 import type { IdSubmission } from "@/components/IdUploadScanner";
 import { getApiEndpoint } from "@/lib/api-config";
+import {
+  apiFetch,
+  extractErrorMessage,
+  messageFrom,
+  UPLOAD_TIMEOUT_MS,
+} from "@/lib/api-client";
 import { lazyWithRetry } from "@/lib/lazy-with-retry";
 import { OFFICES } from "@/constants/offices";
 import { toast } from "sonner";
@@ -52,9 +58,15 @@ const IdUploadScanner = lazyWithRetry(() =>
 
 function sanitizeOcrMessage(message: string | undefined | null): string {
   if (!message) return "Could not read Student ID. Please re-scan your ID card.";
-  // Backend error text sometimes includes raw HTTP endpoints; strip those for end users.
-  if (/ocr session expired/i.test(message) || /POST\/api\/v1/i.test(message)) {
+  const normalized = message.toLowerCase();
+  // Backend copy for an expired OCR session varies ("OCR session expired",
+  // "Session expired, please re-verify"); match the stable part.
+  if (normalized.includes("session expired") || normalized.includes("re-verify")) {
     return "Your ID verification session expired. Please re-scan your student ID to verify it again.";
+  }
+  // Never surface raw endpoint/stack details to applicants.
+  if (/\/api\/v\d/i.test(message) || /https?:\/\//i.test(message)) {
+    return "We couldn't verify your ID right now. Please re-scan your student ID and try again.";
   }
   return message;
 }
@@ -202,6 +214,12 @@ const validDateOfBirth = (v: string) => {
   if (!v.trim()) return "Please enter your date of birth.";
   const date = new Date(v);
   const maxDate = new Date(MAX_DATE_OF_BIRTH);
+  if (Number.isNaN(date.getTime())) return "Please enter a valid date of birth.";
+  if (date > maxDate) {
+    return "You must be born on or before December 31, 2008 to apply.";
+  }
+  const minDate = new Date("1950-01-01");
+  if (date < minDate) return "Please enter a valid date of birth.";
   return null;
 };
 
@@ -459,6 +477,8 @@ function ApplyPage() {
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submitLockRef = useRef(false);
+  // Holds "<draftId|new>:<step>" while a step advance is in flight.
+  const stepLockRef = useRef<string | null>(null);
   const consumedResumeTokenRef = useRef<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
@@ -643,7 +663,11 @@ function ApplyPage() {
       const fd = new FormData();
       fd.append("image", payload.fullIdImageFile);
 
-      const res = await fetch(getApiEndpoint("/ocr/verify"), { method: "POST", body: fd });
+      const res = await apiFetch(
+        "/ocr/verify",
+        { method: "POST", body: fd },
+        { timeoutMs: UPLOAD_TIMEOUT_MS },
+      );
       const json = await res.json();
 
       if (res.ok && json.success) {
@@ -761,7 +785,7 @@ function ApplyPage() {
           payload.middleInitial = cleanMI;
         }
 
-        const res = await fetch(getApiEndpoint("/api/v1/applicants/draft"), {
+        const res = await apiFetch("/api/v1/applicants/draft", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -769,12 +793,7 @@ function ApplyPage() {
         const json = await res.json();
 
         if (!res.ok || !json.success) {
-          let errorMsg = json.message || "Failed to create application draft.";
-          if (json.errors) {
-            const detailErrs = Object.values(json.errors).flat().join(" | ");
-            errorMsg = `${errorMsg}: ${detailErrs}`;
-          }
-          throw new Error(errorMsg);
+          throw new Error(extractErrorMessage(json, "Failed to create application draft."));
         }
 
         if (json.data?.draftId) {
@@ -793,8 +812,8 @@ function ApplyPage() {
       setStepErrors({});
       setError(null);
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch (err: any) {
-      setOcrError(err.message || "Failed to save application draft.");
+    } catch (err: unknown) {
+      setOcrError(messageFrom(err, "Failed to save application draft."));
     } finally {
       setSubmittingDraft(false);
     }
@@ -993,8 +1012,7 @@ function ApplyPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const goNextStep = async () => {
-    if (submitLockRef.current || submittingStep || isSubmitting) return;
+  const runNextStep = async () => {
     if (formStep === 1) {
       const errs = validateStep1();
       if (Object.keys(errs).length > 0) {
@@ -1039,7 +1057,7 @@ function ApplyPage() {
             facebookLink: form.facebookLink,
           };
 
-          const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/batch-1`), {
+          const res = await apiFetch(`/api/v1/applicants/draft/${draftId}/batch-1`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
@@ -1047,16 +1065,11 @@ function ApplyPage() {
           const json = await res.json();
 
           if (!res.ok || !json.success) {
-            let errorMsg = json.message || "Failed to save personal information.";
-            if (json.errors) {
-              const detailErrs = Object.values(json.errors).flat().join(" | ");
-              errorMsg = `${errorMsg}: ${detailErrs}`;
-            }
-            throw new Error(errorMsg);
+            throw new Error(extractErrorMessage(json, "Failed to save personal information."));
           }
           setSavedStep((s) => Math.max(s, 1));
-        } catch (err: any) {
-          setError(err.message || "Failed to save Step 1 details.");
+        } catch (err: unknown) {
+          setError(messageFrom(err, "Failed to save Step 1 details."));
           window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         } finally {
@@ -1117,19 +1130,17 @@ function ApplyPage() {
           fd.append("certificateOfRegistration", files.certificateOfRegistration);
           fd.append("curriculumVitae", files.curriculumVitae);
 
-          const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/batch-2`), {
-            method: "PATCH",
-            body: fd,
-          });
+          const res = await apiFetch(
+            `/api/v1/applicants/draft/${draftId}/batch-2`,
+            { method: "PATCH", body: fd },
+            { timeoutMs: UPLOAD_TIMEOUT_MS },
+          );
           const json = await res.json();
 
           if (!res.ok || !json.success) {
-            let errorMsg = json.message || "Failed to save academic details and files.";
-            if (json.errors) {
-              const detailErrs = Object.values(json.errors).flat().join(" | ");
-              errorMsg = `${errorMsg}: ${detailErrs}`;
-            }
-            throw new Error(errorMsg);
+            throw new Error(
+              extractErrorMessage(json, "Failed to save academic details and files."),
+            );
           }
 
           // Remember that the backend now holds these documents.
@@ -1139,8 +1150,8 @@ function ApplyPage() {
             cv: files.curriculumVitae.name,
           });
           setStaleFileNotice(null);
-        } catch (err: any) {
-          setError(err.message || "Failed to save Step 2 details.");
+        } catch (err: unknown) {
+          setError(messageFrom(err, "Failed to save Step 2 details."));
           window.scrollTo({ top: 0, behavior: "smooth" });
           return;
         } finally {
@@ -1164,7 +1175,25 @@ function ApplyPage() {
     }
   };
 
+  /**
+   * Synchronous double-submit guard. The ref flips before any await, so a
+   * second click (or a duplicate tab advancing the same draft step) is
+   * dropped even before React re-renders the disabled button state.
+   */
+  const goNextStep = async () => {
+    if (submitLockRef.current || submittingStep || isSubmitting) return;
+    const lockKey = `${draftId ?? "new"}:${formStep}`;
+    if (stepLockRef.current) return;
+    stepLockRef.current = lockKey;
+    try {
+      await runNextStep();
+    } finally {
+      if (stepLockRef.current === lockKey) stepLockRef.current = null;
+    }
+  };
+
   const goBackStep = () => {
+    if (stepLockRef.current) return;
     if (submitLockRef.current) return;
     setStepErrors({});
     setError(null);
@@ -1191,7 +1220,7 @@ function ApplyPage() {
         if (form.githubOrProjects) payload.githubOrProjectLinks = form.githubOrProjects;
         if (form.previousWorks) payload.previousWorksAchievements = form.previousWorks;
 
-        const res = await fetch(getApiEndpoint(`/api/v1/applicants/draft/${draftId}/submit`), {
+        const res = await apiFetch(`/api/v1/applicants/draft/${draftId}/submit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -1199,12 +1228,7 @@ function ApplyPage() {
         const json = await res.json();
 
         if (!res.ok || !json.success) {
-          let errorMsg = json.message || "Submission failed.";
-          if (json.errors) {
-            const detailErrs = Object.values(json.errors).flat().join(" | ");
-            errorMsg = `${errorMsg}: ${detailErrs}`;
-          }
-          throw new Error(errorMsg);
+          throw new Error(extractErrorMessage(json, "Submission failed."));
         }
 
         try {
@@ -1293,19 +1317,15 @@ function ApplyPage() {
       fd.append("certificateOfRegistration", files.certificateOfRegistration);
       fd.append("curriculumVitae", files.curriculumVitae);
 
-      const res = await fetch(getApiEndpoint("/applicants"), {
-        method: "POST",
-        body: fd,
-      });
+      const res = await apiFetch(
+        "/applicants",
+        { method: "POST", body: fd },
+        { timeoutMs: UPLOAD_TIMEOUT_MS },
+      );
       const json = await res.json();
 
       if (!res.ok || !json.success) {
-        let errorMsg = json.message || "Submission failed.";
-        if (json.errors) {
-          const detailErrs = Object.values(json.errors).flat().join(" | ");
-          errorMsg = `${errorMsg}: ${detailErrs}`;
-        }
-        throw new Error(errorMsg);
+        throw new Error(extractErrorMessage(json, "Submission failed."));
       }
 
       try {
@@ -1365,6 +1385,7 @@ function ApplyPage() {
     setStaleFileNotice(null);
     clearApplyProgress();
     submitLockRef.current = false;
+    stepLockRef.current = null;
     setIsSubmitting(false);
     setProvisionalIdFile(null);
     if (provisionalIdPreview) URL.revokeObjectURL(provisionalIdPreview);

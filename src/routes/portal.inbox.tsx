@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo } from "react";
 import { Bell, MailOpen, X, Satellite } from "lucide-react";
 import { PortalCard, PortalShell } from "@/components/PortalShell";
 import { usePortalUser } from "@/lib/portal-auth";
-import { getApiEndpoint } from "@/lib/api-config";
+import { apiFetch, messageFrom } from "@/lib/api-client";
 
 export const Route = createFileRoute("/portal/inbox")({
   head: () => ({ meta: [{ title: "M&D Inbox · QCU MSC" }] }),
@@ -22,6 +22,7 @@ function InboxPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [applicantData, setApplicantData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Initialize read and dismissed message IDs after client mount to prevent SSR hydration mismatch
   const [readIds, setReadIds] = useState<string[]>([]);
@@ -40,28 +41,36 @@ function InboxPage() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     const fetchApplicantData = async () => {
       try {
-        const fetchRes = await fetch(getApiEndpoint("/api/v1/applicants/me"), {
+        const fetchRes = await apiFetch("/api/v1/applicants/me", {
           credentials: "include",
         });
         const resData = await fetchRes.json();
-        if (resData?.success && resData.data) {
-          setApplicantData(resData.data);
+        if (cancelled) return;
+        if (!fetchRes.ok || !resData?.success) {
+          throw new Error(resData?.message || "We couldn't load your transmissions.");
         }
-      } catch {
-        /* ignore */
+        setApplicantData(resData.data ?? null);
+        setLoadError(null);
+      } catch (err: unknown) {
+        if (!cancelled) setLoadError(messageFrom(err, "We couldn't load your transmissions."));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
-    fetchApplicantData();
+    void fetchApplicantData();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  if (!user) {
-    void navigate({ to: "/portal/login" });
-    return null;
-  }
+  // Redirect as an effect — an early return here would run before the hooks
+  // below and change hook order between renders.
+  useEffect(() => {
+    if (!user) void navigate({ to: "/portal/login" });
+  }, [user, navigate]);
 
   // Purely dynamic notifications based on applicant submission and live admin status
   const dynamicNotifications = useMemo(() => {
@@ -158,19 +167,23 @@ function InboxPage() {
   }, [applicantData]);
 
   // Derive message list with dynamic unread status based on readIds and dismissedIds
-  const items = dynamicNotifications
-    .filter((m) => !dismissedIds.includes(m.id))
-    .map((m) => ({
-      ...m,
-      unread: readIds.includes(m.id) ? false : m.unread,
-    }));
+  const items = useMemo(
+    () =>
+      dynamicNotifications
+        .filter((m) => !dismissedIds.includes(m.id))
+        .map((m) => ({
+          ...m,
+          unread: readIds.includes(m.id) ? false : m.unread,
+        })),
+    [dynamicNotifications, dismissedIds, readIds],
+  );
 
-  const unreadCount = items.filter((m) => m.unread).length;
+  const unreadCount = useMemo(() => items.filter((m) => m.unread).length, [items]);
 
-  const visible = items.filter((m) => {
-    if (filter === "unread") return m.unread;
-    return true;
-  });
+  const visible = useMemo(
+    () => (filter === "unread" ? items.filter((m) => m.unread) : items),
+    [items, filter],
+  );
 
   const markAllRead = () => {
     const allIds = Array.from(
@@ -212,6 +225,8 @@ function InboxPage() {
     }
     if (selectedId === id) setSelectedId(null);
   };
+
+  if (!user) return null;
 
   return (
     <PortalShell
@@ -266,6 +281,18 @@ function InboxPage() {
             <p className="mt-3 font-body text-xs text-brand-blue-deep/60">
               Retrieving transmissions...
             </p>
+          </div>
+        ) : loadError ? (
+          <div role="alert" className="flex flex-col items-center justify-center py-12 text-center">
+            <Satellite className="size-10 text-brand-orange/60" />
+            <p className="mt-3 font-body text-xs text-brand-blue-deep/70">{loadError}</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="mt-4 rounded-full bg-brand-blue-deep px-3.5 py-2 font-heading text-[10px] font-bold uppercase tracking-[0.15em] text-white hover:bg-brand-blue"
+            >
+              Retry
+            </button>
           </div>
         ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-center">
