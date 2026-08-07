@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -16,6 +16,7 @@ import {
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
+import { SetupLinkSent } from "@/components/SetupLinkSent";
 import { clearAccountRedirect } from "@/lib/application-flow";
 import { setPortalUser } from "@/lib/portal-auth";
 import { authClient } from "@/lib/auth-client";
@@ -133,62 +134,83 @@ function ApplyAccountPage() {
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(() => !!token);
 
+  // Guards against re-validating the same token on a remount / double effect
+  // run (React strict mode, HMR). One token = one POST to the backend.
+  const validatedTokenRef = useRef<string | null>(null);
+
   useEffect(() => {
     clearAccountRedirect();
 
-    if (token) {
-      setLoading(true);
-      setTokenError(null);
-      fetch(getApiEndpoint("/api/v1/users/validate-setup-token"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token }),
-      })
-        .then((res) => {
-          if (!res.ok) {
-            return res.json().then((json) => {
-              throw new Error(
-                json.message ||
-                  (Array.isArray(json.errors) ? json.errors[0] : null) ||
-                  "Invalid or expired setup link."
-              );
-            });
-          }
-          return res.json();
-        })
-        .then((json) => {
-          if (json.success && json.data) {
-            setApplicant({
-              applicantId: json.data.applicantId,
-              studentId: json.data.studentId,
-              fullName: `${json.data.lastName}, ${json.data.firstName}${json.data.middleInitial ? " " + json.data.middleInitial : ""}`.trim(),
-              email: json.data.email,
-              role: "applicant",
-              provisional: false,
-              firstName: json.data.firstName,
-              lastName: json.data.lastName,
-              middleInitial: json.data.middleInitial || "",
-              setupToken: token,
-            });
-          } else {
-            setTokenError("Could not retrieve applicant details.");
-          }
-        })
-        .catch((err) => {
-          setTokenError(err.message || "Failed to validate setup token.");
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
+    if (!token) {
       try {
         const raw = sessionStorage.getItem("qcumsc.applicant");
         if (raw) setApplicant(JSON.parse(raw) as Applicant);
       } catch {
         /* ignore */
       }
+      return;
     }
+
+    if (validatedTokenRef.current === token) return;
+    validatedTokenRef.current = token;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20_000);
+
+    setLoading(true);
+    setTokenError(null);
+
+    (async () => {
+      try {
+        const res = await fetch(getApiEndpoint("/api/v1/users/validate-setup-token"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+          signal: controller.signal,
+        });
+        const json = await res.json().catch(() => null);
+
+        if (!res.ok || !json?.success) {
+          throw new Error(
+            json?.message ||
+              (Array.isArray(json?.errors) ? json.errors[0] : null) ||
+              "Invalid or expired setup link.",
+          );
+        }
+        if (!json.data) throw new Error("Could not retrieve applicant details.");
+
+        setApplicant({
+          applicantId: json.data.applicantId,
+          studentId: json.data.studentId,
+          fullName: `${json.data.lastName}, ${json.data.firstName}${json.data.middleInitial ? " " + json.data.middleInitial : ""}`.trim(),
+          email: json.data.email,
+          role: "applicant",
+          provisional: false,
+          firstName: json.data.firstName,
+          lastName: json.data.lastName,
+          middleInitial: json.data.middleInitial || "",
+          setupToken: token,
+        });
+      } catch (err: any) {
+        if (err?.name === "AbortError") {
+          setTokenError("Validating your setup link timed out. Please open the link again.");
+          // Allow a retry on the next mount since nothing was validated.
+          validatedTokenRef.current = null;
+          return;
+        }
+        setTokenError(err?.message || "Failed to validate setup token.");
+      } finally {
+        clearTimeout(timeout);
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [token]);
+
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -370,6 +392,21 @@ function ApplyAccountPage() {
       </div>
     );
   }
+
+  // No setup token in this browser. The draft-submit endpoint never returns one
+  // (apidocs/applicants.md § 6.4) — it only emails the link — so show the
+  // "check your email" hand-off instead of a password form that would fail at
+  // the last step with "Setup token is missing".
+  if (!token && !applicant.setupToken) {
+    return (
+      <SetupLinkSent
+        email={applicant.email}
+        firstName={applicant.firstName || applicant.fullName?.split(",")[1]?.trim().split(" ")[0]}
+      />
+    );
+  }
+
+
 
   return (
     <div

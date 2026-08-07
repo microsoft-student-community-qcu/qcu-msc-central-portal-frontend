@@ -1065,19 +1065,22 @@ function ApplyPage() {
               firstName: confirmFirstName.trim(),
               lastName: confirmLastName.trim(),
               middleInitial: cleanMI,
-              setupToken: json.data?.setupToken,
+              // No setupToken here on purpose: the draft-submit endpoint only
+              // emails the password-setup link (apidocs/applicants.md § 6.4).
             }),
           );
         } catch {
           /* ignore */
         }
 
-        await navigate({
-          to: "/apply/account",
-          search: json.data?.setupToken ? { token: json.data.setupToken } : {},
-          replace: true,
-        });
+        // Mark the hand-off BEFORE navigating so a re-mount of /apply cannot
+        // flash the data-privacy consent screen during the redirect.
+        startAccountRedirect();
+        setRedirectingToAccount(true);
+
+        await navigate({ to: "/apply/account", search: {}, replace: true });
         return;
+
       }
 
       // Fallback single endpoint if draftId is not available
