@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { PageTransition } from "../components/PageTransition";
 import { CosmicLoader } from "../components/CosmicLoader";
+import { Toaster } from "../components/ui/sonner";
 
 
 function NotFoundComponent() {
@@ -158,6 +159,8 @@ function RootComponent() {
       <PageTransition>
         <Outlet />
       </PageTransition>
+      {/* Global toast layer — sonner's toast() calls are no-ops without this. */}
+      <Toaster position="top-center" richColors closeButton />
     </QueryClientProvider>
 
   );
