@@ -22,6 +22,7 @@ import { setPortalUser } from "@/lib/portal-auth";
 import { authClient } from "@/lib/auth-client";
 
 import { getApiEndpoint } from "@/lib/api-config";
+import { apiFetch } from "@/lib/api-client";
 
 export const Route = createFileRoute("/apply/account")({
   validateSearch: (search: Record<string, unknown>): { token?: string } => {
@@ -277,7 +278,7 @@ function ApplyAccountPage() {
         );
       }
 
-      const linkRes = await fetch(getApiEndpoint("/api/v1/users/link-applicant"), {
+      const linkRes = await apiFetch("/api/v1/users/link-applicant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
