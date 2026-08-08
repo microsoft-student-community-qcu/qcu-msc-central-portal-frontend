@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import { ApplicationClosed } from "@/components/ApplicationClosed";
+import { APPLICATIONS_OPEN } from "@/lib/application-window";
 import { Input } from "@/components/ui/input";
 import { SetupLinkSent } from "@/components/SetupLinkSent";
 import { clearAccountRedirect } from "@/lib/application-flow";
@@ -60,7 +62,7 @@ export const Route = createFileRoute("/apply/account")({
       </div>
     </div>
   ),
-  component: ApplyAccountPage,
+  component: APPLICATIONS_OPEN ? ApplyAccountPage : ApplicationClosed,
 });
 
 type SessionIdentity = {
