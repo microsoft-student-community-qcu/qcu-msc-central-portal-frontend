@@ -33,6 +33,13 @@ The frontend is built using a modern React SPA architecture with SSR-ready capab
 ### 🎨 Specifications & Design (`docs/specs/`)
 - [Space UI Design System](specs/design-system.md) — Palette tokens, space gradients, glassmorphism cards, and responsive layout standards.
 
+### 🛠️ Fix Notes (`docs/fix/`)
+- [Resilience & Safety Audit (Phases 1-3)](fix/resilience-safety-audit.md) — Shared `apiFetch` client with timeouts, DOB validation fix, hook-order fix, PII log removal, and double-submit locking.
+- [Stale Attachment Fix](fix/stale-attachment-fix.md) — Recovering file attachments lost during long application sessions.
+- [Resubmission Fix](fix/resubmission-fix.md) — Optional-field handling on the resubmit endpoint.
+- [Resume Link Loop Fix](fix/resume-link-loop-fix.md) — Draft resume token handling.
+- [Setup Token Missing Fix](fix/setup-token-missing-fix.md) — Account setup link recovery.
+
 ---
 
 ## 🚀 Getting Started Locally
@@ -47,3 +54,4 @@ cp .env.example .env
 # 3. Start development server
 npm run dev
 ```
+- [Applications Closed Patch](guides/applications-closed-patch.md) — gating all `/apply/*` routes while recruitment is closed

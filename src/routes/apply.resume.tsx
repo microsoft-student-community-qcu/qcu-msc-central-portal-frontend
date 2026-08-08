@@ -1,4 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
+import { ApplicationClosed } from "@/components/ApplicationClosed";
+import { APPLICATIONS_OPEN } from "@/lib/application-window";
 
 /**
  * Alias route for the emailed "Resume application" link.
@@ -14,6 +16,8 @@ export const Route = createFileRoute("/apply/resume")({
     resumeToken: search.resumeToken as string | undefined,
   }),
   beforeLoad: ({ search }) => {
+    // Applications are closed: don't bounce resume links into the flow.
+    if (!APPLICATIONS_OPEN) return;
     const token = search.resumeToken ?? search.token;
     throw redirect({
       to: "/apply",
@@ -21,5 +25,5 @@ export const Route = createFileRoute("/apply/resume")({
       replace: true,
     });
   },
-  component: () => null,
+  component: APPLICATIONS_OPEN ? () => null : ApplicationClosed,
 });
