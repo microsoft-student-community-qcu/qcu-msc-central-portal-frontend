@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { ArrowLeft, ArrowRight, LogIn, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Loader2, LogIn, Mail, ShieldCheck, X } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
@@ -29,6 +29,7 @@ function PortalLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -231,9 +232,18 @@ function PortalLoginPage() {
                 />
               </div>
               <div>
-                <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
-                  Password
-                </label>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotPassword(true)}
+                    className="font-body text-xs font-semibold text-brand-blue-deep/80 hover:text-brand-blue-deep hover:underline cursor-pointer"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
                 <Input
                   type="password"
                   value={password}
@@ -245,7 +255,7 @@ function PortalLoginPage() {
               {error && <p className="text-xs font-medium text-red-600">{error}</p>}
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 cursor-pointer"
                 style={{ background: "var(--gradient-cta)" }}
               >
                 <LogIn className="size-4" /> Sign in & dock
@@ -258,9 +268,174 @@ function PortalLoginPage() {
               </p>
             </form>
 
+            <ForgotPasswordModal
+              open={showForgotPassword}
+              onClose={() => setShowForgotPassword(false)}
+              defaultEmail={email}
+            />
           </div>
         </section>
       </main>
+    </div>
+  );
+}
+
+function ForgotPasswordModal({
+  open,
+  onClose,
+  defaultEmail = "",
+}: {
+  open: boolean;
+  onClose: () => void;
+  defaultEmail?: string;
+}) {
+  const [email, setEmail] = useState(defaultEmail);
+  const [sending, setSending] = useState(false);
+  const [sentMessage, setSentMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open) {
+      setEmail(defaultEmail);
+      setSentMessage(null);
+      setError(null);
+    }
+  }, [open, defaultEmail]);
+
+  const handleClose = () => {
+    setSentMessage(null);
+    setError(null);
+    onClose();
+  };
+
+  if (!open) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    setError(null);
+    setSending(true);
+
+    try {
+      const res = await apiFetch("/api/v1/auth/student/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok && json.errors) {
+        setError(extractErrorMessage(json, "Validation error. Please check your email."));
+        return;
+      }
+      setSentMessage(
+        json.message || "If an account exists, a password reset link has been sent.",
+      );
+    } catch (err: unknown) {
+      setError(messageFrom(err, "Failed to send reset email. Please try again."));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="relative w-full max-w-md rounded-3xl bg-slate-900 border border-brand-orange/30 p-6 sm:p-8 shadow-2xl space-y-6 text-slate-100">
+        <button
+          type="button"
+          onClick={handleClose}
+          className="absolute right-5 top-5 rounded-full bg-white/10 p-1.5 text-slate-400 hover:bg-white/20 hover:text-white transition cursor-pointer"
+        >
+          <X className="size-4" />
+        </button>
+
+        <div className="flex items-center gap-3">
+          <div className="grid size-12 place-items-center rounded-2xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <KeyRound className="size-6" />
+          </div>
+          <div>
+            <h3 className="font-display text-lg font-bold text-white">Reset your password</h3>
+            <p className="font-body text-xs text-slate-400">Request a secure password reset link</p>
+          </div>
+        </div>
+
+        {sentMessage ? (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm text-emerald-300 flex items-start gap-3">
+              <CheckCircle2 className="size-5 shrink-0 text-emerald-400 mt-0.5" />
+              <div>
+                <p className="font-semibold text-emerald-200">Reset link sent!</p>
+                <p className="mt-1 text-xs text-emerald-300/90 leading-relaxed">
+                  {sentMessage} Please check your email inbox and spam folder.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-full py-3 px-6 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 cursor-pointer"
+              style={{ background: "var(--gradient-cta)" }}
+            >
+              Back to Sign In
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-300">
+                Personal or Student Email
+              </label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError(null);
+                }}
+                placeholder="you@gmail.com"
+                disabled={sending}
+                className="h-12 bg-slate-800/80 border-slate-700 text-white placeholder:text-slate-500"
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs font-semibold text-red-400">
+                {error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleClose}
+                disabled={sending}
+                className="rounded-full border border-slate-700 bg-slate-800/60 px-5 py-2.5 font-heading text-xs font-bold text-slate-300 hover:bg-slate-800 transition disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={sending}
+                className="inline-flex items-center gap-2 rounded-full px-6 py-2.5 font-heading text-xs font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
+                style={{ background: "var(--gradient-cta)" }}
+              >
+                {sending ? (
+                  <>
+                    Sending… <Loader2 className="size-4 animate-spin" />
+                  </>
+                ) : (
+                  <>
+                    Send reset link <Mail className="size-4" />
+                  </>
+                )}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
