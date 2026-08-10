@@ -12,7 +12,8 @@ The application uses `@tanstack/react-router` with file-based routing. All route
 | `/apply` | `src/routes/apply.index.tsx` | Onboarding flow: OCR Student ID verification + 3-Step Batch Application Form. Accepts `?resumeToken=` (or `?token=`) from the resume email. | Public |
 | `/apply/resume` | `src/routes/apply.resume.tsx` | Alias for the emailed resume link; redirects `?token=` / `?resumeToken=` to `/apply?resumeToken=…`. | Public / Redirect |
 | `/apply/account` | `src/routes/apply.account.tsx` | Post-submission Cockpit Account creation for applicants. | Public / Redirect |
-| `/portal/login` | `src/routes/portal.login.tsx` | Portal authentication page for registered applicants and admins. | Public |
+| `/portal/login` | `src/routes/portal.login.tsx` | Portal authentication page for applicants and members. Includes Forgot Password modal dialog. | Public |
+| `/auth/reset-password` | `src/routes/auth.reset-password.tsx` | Password Reset page. Validates emailed token and sets a new password. | Public |
 | `/portal/tracking` | `src/routes/portal.tracking.tsx` | Real-time application status tracking, decision display, and resubmission form. | Authenticated (Applicant) |
 | `/portal/inbox` | `src/routes/portal.inbox.tsx` | Mission Control Inbox displaying submission greetings and admin transmissions. | Authenticated (Applicant / Member) |
 | `/portal/profile` | `src/routes/portal.profile.tsx` | Crew Profile displaying identity details and academic credentials (college, program, section, campus). | Authenticated (Applicant / Member) |

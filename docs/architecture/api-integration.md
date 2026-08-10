@@ -99,6 +99,9 @@ export const getApiEndpoint = (path: string): string => {
 | Account Linking | `getApiEndpoint("/api/v1/users/link-applicant")` | `POST` | JSON (`{ applicantId }`) + `credentials: "include"` — **authenticated**; a session must exist before calling |
 | Fetch Current Applicant | `getApiEndpoint("/api/v1/applicants/me")` | `GET` | Cookie / Credentials (`credentials: "include"`) |
 | Resubmit Application | `getApiEndpoint("/api/v1/applicants/:id/resubmit")` | `POST` | `FormData` |
+| Student Forgot Password | `getApiEndpoint("/api/v1/auth/student/forgot-password")` | `POST` | JSON (`{ email }`) — Public |
+| Validate Reset Token | `getApiEndpoint("/api/v1/auth/validate-reset-token")` | `POST` | JSON (`{ token }`) — Public |
+| Reset Password | `getApiEndpoint("/api/v1/auth/reset-password")` | `POST` | JSON (`{ token, newPassword }`) — Public |
 
 ---
 
