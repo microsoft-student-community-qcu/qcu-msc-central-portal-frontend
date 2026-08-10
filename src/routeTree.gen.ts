@@ -23,6 +23,7 @@ import { Route as PortalEventsRouteImport } from './routes/portal.events'
 import { Route as PortalDashboardRouteImport } from './routes/portal.dashboard'
 import { Route as PortalCertificatesRouteImport } from './routes/portal.certificates'
 import { Route as AuthSetupPasswordRouteImport } from './routes/auth.setup-password'
+import { Route as AuthResetPasswordRouteImport } from './routes/auth.reset-password'
 import { Route as ApplyResumeRouteImport } from './routes/apply.resume'
 import { Route as ApplyDashboardRouteImport } from './routes/apply.dashboard'
 import { Route as ApplyAccountRouteImport } from './routes/apply.account'
@@ -98,6 +99,11 @@ const AuthSetupPasswordRoute = AuthSetupPasswordRouteImport.update({
   path: '/auth/setup-password',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthResetPasswordRoute = AuthResetPasswordRouteImport.update({
+  id: '/auth/reset-password',
+  path: '/auth/reset-password',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApplyResumeRoute = ApplyResumeRouteImport.update({
   id: '/apply/resume',
   path: '/apply/resume',
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
   '/apply/resume': typeof ApplyResumeRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
@@ -145,6 +152,7 @@ export interface FileRoutesByTo {
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
   '/apply/resume': typeof ApplyResumeRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
@@ -166,6 +174,7 @@ export interface FileRoutesById {
   '/apply/account': typeof ApplyAccountRoute
   '/apply/dashboard': typeof ApplyDashboardRoute
   '/apply/resume': typeof ApplyResumeRoute
+  '/auth/reset-password': typeof AuthResetPasswordRoute
   '/auth/setup-password': typeof AuthSetupPasswordRoute
   '/portal/certificates': typeof PortalCertificatesRoute
   '/portal/dashboard': typeof PortalDashboardRoute
@@ -188,6 +197,7 @@ export interface FileRouteTypes {
     | '/apply/account'
     | '/apply/dashboard'
     | '/apply/resume'
+    | '/auth/reset-password'
     | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
@@ -208,6 +218,7 @@ export interface FileRouteTypes {
     | '/apply/account'
     | '/apply/dashboard'
     | '/apply/resume'
+    | '/auth/reset-password'
     | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/apply/account'
     | '/apply/dashboard'
     | '/apply/resume'
+    | '/auth/reset-password'
     | '/auth/setup-password'
     | '/portal/certificates'
     | '/portal/dashboard'
@@ -249,6 +261,7 @@ export interface RootRouteChildren {
   ApplyAccountRoute: typeof ApplyAccountRoute
   ApplyDashboardRoute: typeof ApplyDashboardRoute
   ApplyResumeRoute: typeof ApplyResumeRoute
+  AuthResetPasswordRoute: typeof AuthResetPasswordRoute
   AuthSetupPasswordRoute: typeof AuthSetupPasswordRoute
   PortalCertificatesRoute: typeof PortalCertificatesRoute
   PortalDashboardRoute: typeof PortalDashboardRoute
@@ -364,6 +377,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthSetupPasswordRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/reset-password': {
+      id: '/auth/reset-password'
+      path: '/auth/reset-password'
+      fullPath: '/auth/reset-password'
+      preLoaderRoute: typeof AuthResetPasswordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/apply/resume': {
       id: '/apply/resume'
       path: '/apply/resume'
@@ -401,6 +421,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApplyAccountRoute: ApplyAccountRoute,
   ApplyDashboardRoute: ApplyDashboardRoute,
   ApplyResumeRoute: ApplyResumeRoute,
+  AuthResetPasswordRoute: AuthResetPasswordRoute,
   AuthSetupPasswordRoute: AuthSetupPasswordRoute,
   PortalCertificatesRoute: PortalCertificatesRoute,
   PortalDashboardRoute: PortalDashboardRoute,
