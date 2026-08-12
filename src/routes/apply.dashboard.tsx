@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import { ApplicationClosed } from "@/components/ApplicationClosed";
+import { APPLICATIONS_OPEN } from "@/lib/application-window";
 
 export const Route = createFileRoute("/apply/dashboard")({
   head: () => ({
@@ -24,7 +26,7 @@ export const Route = createFileRoute("/apply/dashboard")({
       },
     ],
   }),
-  component: ApplyDashboardPage,
+  component: APPLICATIONS_OPEN ? ApplyDashboardPage : ApplicationClosed,
 });
 
 type Applicant = {

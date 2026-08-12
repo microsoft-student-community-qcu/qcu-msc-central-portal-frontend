@@ -15,6 +15,8 @@ import {
 } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
+import { ApplicationClosed } from "@/components/ApplicationClosed";
+import { APPLICATIONS_OPEN } from "@/lib/application-window";
 import { CosmicLoader } from "@/components/CosmicLoader";
 import { DataPrivacyConsent } from "@/components/DataPrivacyConsent";
 import { Input } from "@/components/ui/input";
@@ -94,7 +96,7 @@ export const Route = createFileRoute("/apply/")({
       },
     ],
   }),
-  component: ApplyPage,
+  component: APPLICATIONS_OPEN ? ApplyPage : ApplicationClosed,
 });
 
 /* ---------- Types ---------- */
