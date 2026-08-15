@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight, CheckCircle2, KeyRound, Loader2, LogIn, Mail, ShieldCheck, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, Loader2, LogIn, Mail, ShieldCheck, X } from "lucide-react";
 import logoUrl from "@/assets/qcu-msc-logo.png";
 import { SkyBackdrop } from "@/components/SkyBackdrop";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,7 @@ function PortalLoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
 
@@ -232,10 +233,29 @@ function PortalLoginPage() {
                 />
               </div>
               <div>
-                <div className="mb-1.5 flex items-center justify-between">
-                  <label className="font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
-                    Password
-                  </label>
+                <label className="mb-1.5 block font-heading text-[11px] font-extrabold uppercase tracking-[0.18em] text-brand-blue-deep/65">
+                  Password
+                </label>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
+                    placeholder="••••••••"
+                    className="h-12 bg-white/85 pr-10"
+                  />
+                  {password.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-blue-deep/60 hover:text-brand-blue-deep transition-colors cursor-pointer"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <Eye className="size-4" /> : <EyeOff className="size-4" />}
+                    </button>
+                  )}
+                </div>
+                <div className="mt-1.5 flex justify-end">
                   <button
                     type="button"
                     onClick={() => setShowForgotPassword(true)}
@@ -244,18 +264,11 @@ function PortalLoginPage() {
                     Forgot password?
                   </button>
                 </div>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                  placeholder="••••••••"
-                  className="h-12 bg-white/85"
-                />
               </div>
               {error && <p className="text-xs font-medium text-red-600">{error}</p>}
               <button
                 type="submit"
-                className="inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 cursor-pointer"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-full px-6 py-3 font-heading text-sm font-bold text-white shadow-lg transition-all duration-200 hover:brightness-110 hover:shadow-xl active:scale-[0.98] cursor-pointer"
                 style={{ background: "var(--gradient-cta)" }}
               >
                 <LogIn className="size-4" /> Sign in & dock
