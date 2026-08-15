@@ -55,5 +55,7 @@ sequenceDiagram
 
 ## 🎨 UI Interaction Rules
 
+- The **Forgot password?** trigger link is positioned immediately below the Password input field (aligned right) on the sign-in form ([`src/routes/portal.login.tsx`](../../src/routes/portal.login.tsx)).
+- The password visibility eye toggle dynamically renders inside the password input field when text is entered into the field (displaying `EyeOff` slashed eye when hidden, and `Eye` open eye when revealed).
 - All interactive buttons (**Forgot password?**, **Close**, **Cancel**, **Send reset link**, **Sign In with New Password**) feature explicit `cursor-pointer` styles on hover.
 - While async requests are pending, buttons enter a disabled loading state (`submittingStep || sending || submitting`), displaying an animated spinner (`Loader2`) and `cursor-not-allowed`.
